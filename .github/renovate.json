@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "group:allNonMajor", "schedule:daily"],
+  "rebaseWhen": "behind-base-branch",
+  "rangeStrategy": "bump",
+  "packageRules": [
+    {
+      "matchManagers": ["yarn"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "prPriority": -1,
+      "automerge": true
+    },
+    {
+      "description": "Disable Node.js major version updates",
+      "matchDatasources": ["docker", "node-version"],
+      "matchPackageNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Disable Dockerfile Node.js major version updates",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": {
+    "enabled": true
+  }
+}

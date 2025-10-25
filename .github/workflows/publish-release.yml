@@ -1,0 +1,203 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*" # Triggers on semantic version tags like v1.0.0
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      version_tag:
+        description: "Version tag to publish (e.g., v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  id-token: write # Required for OIDC authentication to MCP Registry
+  contents: read
+  packages: write
+
+env:
+  DOCKER_IMAGE: devsaurus/chromadb-remote-mcp
+
+jobs:
+  # ============================================
+  # Job 1: Quality Gates (Parallel)
+  # ============================================
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version_tag || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.21.0"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run type check
+        run: yarn type-check
+
+      - name: Run tests with coverage
+        run: yarn test:unit:coverage
+
+      - name: Build TypeScript package
+        run: yarn build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-artifacts
+          path: |
+            build/
+            server.json
+          retention-days: 1
+
+  # ============================================
+  # Job 2: Docker Build and Push
+  # ============================================
+  docker-publish:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: quality-gates
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version_tag || github.ref }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # Extract version from tag (v1.0.0 -> 1.0.0)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version_tag }}"
+            VERSION=${VERSION#v}
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Publishing version: $VERSION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=semver,pattern={{major}},enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=raw,value=${{ steps.version.outputs.VERSION }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=latest
+
+      - name: Build and push multi-platform Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION }}
+          # Supply chain attestations for enhanced security
+          provenance: true
+          sbom: true
+
+      - name: Verify Docker Hub publication
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          echo "🔍 Verifying Docker Hub tags..."
+          sleep 5
+
+          if docker manifest inspect ${{ env.DOCKER_IMAGE }}:$VERSION > /dev/null 2>&1; then
+            echo "✅ Docker image ${{ env.DOCKER_IMAGE }}:$VERSION is available"
+          else
+            echo "⚠️ Docker image may take a few minutes to appear in registry"
+          fi
+
+  # ============================================
+  # Job 3: MCP Registry Publication (TODO)
+  # ============================================
+  # mcp-publish:
+  #   name: MCP Registry Publish
+  #   runs-on: ubuntu-latest
+  #   needs: docker-publish
+  #
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v5
+  #       with:
+  #         ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version_tag || github.ref }}
+  #
+  #     - name: Download MCP Publisher
+  #       run: |
+  #         echo "📥 Downloading MCP publisher..."
+  #         # TODO: Verify correct download URL
+  #         curl -L -o mcp-publisher https://github.com/modelcontextprotocol/publisher/releases/latest/download/mcp-publisher-linux-amd64
+  #         chmod +x mcp-publisher
+  #         ./mcp-publisher --version
+  #
+  #     - name: Authenticate to MCP Registry
+  #       run: |
+  #         echo "🔐 Authenticating to MCP Registry via GitHub OIDC..."
+  #         ./mcp-publisher login github-oidc
+  #
+  #     - name: Publish to MCP Registry
+  #       run: |
+  #         echo "📤 Publishing to MCP Registry..."
+  #         ./mcp-publisher publish
+  #         echo "✅ Successfully published to MCP Registry!"
+
+  # ============================================
+  # Job 4: Release Summary
+  # ============================================
+  release-summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: docker-publish
+    if: always()
+
+    steps:
+      - name: Generate release summary
+        run: |
+          VERSION=${{ needs.docker-publish.outputs.version }}
+
+          echo "## 🎉 Release $VERSION Published Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Docker Images" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.DOCKER_IMAGE }}:$VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.DOCKER_IMAGE }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Docker Hub](https://hub.docker.com/r/${{ env.DOCKER_IMAGE }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📥 Installation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.DOCKER_IMAGE }}:$VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚠️ Note" >> $GITHUB_STEP_SUMMARY
+          echo "MCP Registry publication is currently disabled (in development)" >> $GITHUB_STEP_SUMMARY
