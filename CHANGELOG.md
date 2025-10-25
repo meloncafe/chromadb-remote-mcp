@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] -2025-10-26
+
+- fix(docs): update installation scripts by @meloncafe in #3
+- fix(docker): update volume path in docker-compose files to use /data by @meloncafe in #4
+- feat(docker): add MCP Register Label to Dockerfile by @meloncafe in #5
+
 ## [1.0.0] - 2025-10-25
 
 ### Added
@@ -75,4 +81,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero active vulnerabilities in dependencies
 
 [Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v1.0.0...HEAD
+[1.0.1]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.1
 [1.0.0]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.0
