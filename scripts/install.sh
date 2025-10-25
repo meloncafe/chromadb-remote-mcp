@@ -36,12 +36,12 @@ echo ""
 # Download docker-compose.yml
 echo "📥 Downloading docker-compose.yml..."
 curl -fsSL -o docker-compose.yml \
-    https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/docker-compose.yml
+    https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/docker-compose.yml
 
 # Download .env.example
 echo "📥 Downloading .env.example..."
 curl -fsSL -o .env.example \
-    https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/.env.example
+    https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/.env.example
 
 # Create .env if it doesn't exist
 if [ ! -f .env ]; then
