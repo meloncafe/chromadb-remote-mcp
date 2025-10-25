@@ -5,7 +5,7 @@ services:
     expose:
       - "8000"
     volumes:
-      - ${CHROMA_DATA_PATH:-chroma-data}:/chroma/chroma
+      - ${CHROMA_DATA_PATH:-chroma-data}:/data
     environment:
       - IS_PERSISTENT=${IS_PERSISTENT:-TRUE}
       - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-FALSE}
