@@ -32,6 +32,7 @@ import {
   resetWarningThrottle,
   sanitizeErrorForClient,
   sanitizeForLogging,
+  sanitizeHttpMethod,
   sanitizeLogValue,
   sendLogNotification,
   setLevelHandler,
@@ -1603,6 +1604,77 @@ describe("index.ts", () => {
     it("should handle non-object query", () => {
       const result = sanitizeForLogging("/api", "string");
       expect(result).toBe("/api");
+    });
+
+    it("should prevent prototype pollution via __proto__", () => {
+      const maliciousQuery = {
+        __proto__: { polluted: true },
+        normalKey: "value",
+      };
+      const result = sanitizeForLogging("/api", maliciousQuery);
+
+      // Should not include __proto__ in output
+      expect(result).not.toContain("__proto__");
+      expect(result).toContain("normalKey");
+    });
+
+    it("should prevent prototype pollution via constructor", () => {
+      const maliciousQuery = {
+        constructor: { polluted: true },
+        normalKey: "value",
+      };
+      const result = sanitizeForLogging("/api", maliciousQuery);
+
+      // Should not include constructor in output
+      expect(result).not.toContain("constructor");
+      expect(result).toContain("normalKey");
+    });
+
+    it("should prevent prototype pollution via prototype", () => {
+      const maliciousQuery = {
+        prototype: { polluted: true },
+        normalKey: "value",
+      };
+      const result = sanitizeForLogging("/api", maliciousQuery);
+
+      // Should not include prototype in output
+      expect(result).not.toContain("prototype");
+      expect(result).toContain("normalKey");
+    });
+  });
+
+  describe("sanitizeHttpMethod", () => {
+    it("should allow valid HTTP methods", () => {
+      expect(sanitizeHttpMethod("GET")).toBe("GET");
+      expect(sanitizeHttpMethod("POST")).toBe("POST");
+      expect(sanitizeHttpMethod("PUT")).toBe("PUT");
+      expect(sanitizeHttpMethod("DELETE")).toBe("DELETE");
+      expect(sanitizeHttpMethod("PATCH")).toBe("PATCH");
+      expect(sanitizeHttpMethod("HEAD")).toBe("HEAD");
+      expect(sanitizeHttpMethod("OPTIONS")).toBe("OPTIONS");
+    });
+
+    it("should normalize to uppercase", () => {
+      expect(sanitizeHttpMethod("get")).toBe("GET");
+      expect(sanitizeHttpMethod("post")).toBe("POST");
+      expect(sanitizeHttpMethod("PuT")).toBe("PUT");
+    });
+
+    it("should reject invalid methods", () => {
+      expect(sanitizeHttpMethod("INVALID")).toBe("INVALID");
+      expect(sanitizeHttpMethod("CUSTOM")).toBe("INVALID");
+      expect(sanitizeHttpMethod("../etc/passwd")).toBe("INVALID");
+    });
+
+    it("should handle undefined method", () => {
+      expect(sanitizeHttpMethod(undefined)).toBe("UNKNOWN");
+    });
+
+    it("should prevent log injection via malicious method", () => {
+      const maliciousMethod = "GET\nHTTP/1.1 200 OK\nMalicious: header";
+      const result = sanitizeHttpMethod(maliciousMethod);
+      expect(result).toBe("INVALID");
+      expect(result).not.toContain("\n");
     });
   });
 

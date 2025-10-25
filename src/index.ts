@@ -405,6 +405,29 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
   return sanitized;
 }
 
+// Sanitize HTTP method for logging to prevent log injection
+export function sanitizeHttpMethod(method: string | undefined): string {
+  // Allowlist of valid HTTP methods
+  const validMethods = [
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE",
+    "PATCH",
+    "HEAD",
+    "OPTIONS",
+    "CONNECT",
+    "TRACE",
+  ];
+
+  if (!method) {
+    return "UNKNOWN";
+  }
+
+  const upperMethod = method.toUpperCase();
+  return validMethods.includes(upperMethod) ? upperMethod : "INVALID";
+}
+
 // Sanitize sensitive data from URLs and query parameters for logging
 // query can be unknown type to handle various Express request query formats
 export function sanitizeForLogging(url: string | undefined, query?: unknown): string {
@@ -424,18 +447,28 @@ export function sanitizeForLogging(url: string | undefined, query?: unknown): st
 
   // If query object is provided, create sanitized version
   if (query && typeof query === "object") {
-    const sanitizedQuery: Record<string, unknown> = {};
+    // Use Object.create(null) to prevent prototype pollution
+    const sanitizedQuery: Record<string, unknown> = Object.create(null);
+
+    // Validate and sanitize each key
     for (const [key, value] of Object.entries(query)) {
+      // Skip prototype pollution vectors
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        continue;
+      }
+
       // Check if key matches any sensitive parameter (case-insensitive)
       const isSensitive = sensitiveParams.some(
         (param) => param.toLowerCase() === key.toLowerCase(),
       );
 
-      if (isSensitive) {
-        sanitizedQuery[key] = "***";
-      } else {
-        sanitizedQuery[key] = value;
-      }
+      // Use Object.defineProperty to safely add properties
+      Object.defineProperty(sanitizedQuery, key, {
+        value: isSensitive ? "***" : value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
     }
     return `${sanitized} ${JSON.stringify(sanitizedQuery)}`;
   }
@@ -1317,11 +1350,12 @@ export function createCloseHandler(server: Closeable, transport: Closeable) {
 // MCP endpoint handler - exported for testing
 export async function mcpHandler(req: express.Request, res: express.Response) {
   const sanitizedUrl = sanitizeForLogging(req.url, req.query);
+  const sanitizedMethod = sanitizeLogValue(req.body?.method || "unknown");
 
   // Use MCP logging for request tracking
-  await mcpLog.info(`Received MCP request: ${req.body?.method || "unknown"}`, {
+  await mcpLog.info(`Received MCP request: ${sanitizedMethod}`, {
     url: sanitizedUrl,
-    method: req.body?.method,
+    method: sanitizedMethod,
   });
 
   try {
@@ -1396,8 +1430,9 @@ export function proxyReqHandler(
   req: express.Request,
   _res: express.Response,
 ) {
+  const sanitizedMethod = sanitizeHttpMethod(req.method);
   const sanitizedUrl = sanitizeForLogging(req.url);
-  console.log(`🔄 Proxying ${req.method} ${sanitizedUrl} → ChromaDB`);
+  console.log(`🔄 Proxying ${sanitizedMethod} ${sanitizedUrl} → ChromaDB`);
 }
 
 export function proxyErrorHandler(
