@@ -1,0 +1,34 @@
+services:
+  chromadb:
+    image: chromadb/chroma:${CHROMADB_VERSION:-latest}
+    container_name: chromadb-test
+    ports:
+      - "8000:8000"
+    environment:
+      - IS_PERSISTENT=FALSE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - test-network
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-server-test
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-test-token-12345}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - CHROMA_TENANT=default_tenant
+      - CHROMA_DATABASE=default_database
+    depends_on:
+      - chromadb
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge

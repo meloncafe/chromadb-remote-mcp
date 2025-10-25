@@ -1,0 +1,64 @@
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    expose:
+      - "8000"
+    volumes:
+      - ${CHROMA_DATA_PATH:-chroma-data}:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=${IS_PERSISTENT:-TRUE}
+      - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-FALSE}
+      - OMP_NUM_THREADS=4
+      - OMP_WAIT_POLICY=PASSIVE
+    networks:
+      - chroma-network
+    restart: unless-stopped
+
+  mcp-server:
+    build: .
+    container_name: chroma-mcp-server
+    expose:
+      - "3000"
+    environment:
+      - PORT=3000
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - CHROMA_HOST=${CHROMA_HOST:-chromadb}
+      - CHROMA_PORT=${CHROMA_PORT:-8000}
+      - CHROMA_TENANT=${CHROMA_TENANT:-default_tenant}
+      - CHROMA_DATABASE=${CHROMA_DATABASE:-default_database}
+      - CHROMA_AUTH_TOKEN=${CHROMA_AUTH_TOKEN}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - ALLOW_QUERY_AUTH=${ALLOW_QUERY_AUTH:-true}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120000}
+      - PING_TIMEOUT=${PING_TIMEOUT:-30000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NODE_NO_WARNINGS=1
+      - ORT_LOGGING_LEVEL=3
+    depends_on:
+      - chromadb
+    networks:
+      - chroma-network
+    restart: unless-stopped
+
+  # Caddy Reverse Proxy (inline configuration)
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy-proxy
+    ports:
+      - "${PORT:-8080}:80"
+    command: caddy reverse-proxy --from :80 --to mcp-server:3000
+    depends_on:
+      - mcp-server
+    networks:
+      - chroma-network
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
+    driver: local
+
+networks:
+  chroma-network:
+    driver: bridge

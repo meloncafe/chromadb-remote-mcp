@@ -1,0 +1,132 @@
+# Codecov Configuration for ChromaDB Remote MCP Server
+# https://docs.codecov.com/docs/codecov-yaml
+
+# ==========================================
+# Basic Configuration
+# ==========================================
+codecov:
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: true
+
+# ==========================================
+# Coverage Configuration
+# ==========================================
+coverage:
+  precision: 2
+  round: down
+  range: "50...100"
+
+  status:
+    # Project-wide coverage
+    project:
+      default:
+        target: auto
+        threshold: 5%
+        base: auto
+        if_not_found: success
+        if_ci_failed: error
+        informational: false
+
+      # ChromaDB tools coverage (core business logic)
+      chroma-tools:
+        target: 90%
+        paths:
+          - "src/chroma-tools.ts"
+        threshold: 2%
+        informational: true
+
+    # Coverage for changed code in PRs
+    patch:
+      default:
+        target: 60%
+        threshold: 5%
+        base: auto
+        if_not_found: success
+        informational: false
+
+# ==========================================
+# Component Management
+# ==========================================
+component_management:
+  individual_components:
+    # ChromaDB Tools
+    - component_id: chroma-tools
+      name: "🏗️ ChromaDB Tools"
+      paths:
+        - "src/chroma-tools.ts"
+
+    # Route Layer
+    - component_id: route-layer
+      name: "🚏 Route Layer"
+      paths:
+        - "src/index.ts"
+
+# ==========================================
+# Flags Configuration
+# ==========================================
+flags:
+  chroma-tools:
+    paths:
+      - "src/chroma-tools.ts"
+    carryforward: true
+
+  route-layer:
+    paths:
+      - "src/index.ts"
+    carryforward: true
+
+  unittests:
+    paths:
+      - "src/**"
+    carryforward: true
+
+# ==========================================
+# Path Fixes & Ignores
+# ==========================================
+fixes:
+  - "/home/runner/work/chromadb-remote-mcp/src/::" # GitHub Actions absolute path to relative
+
+ignore:
+  # Test files
+  - "__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+
+  # Build output
+  - "build/**"
+  - "dist/**"
+
+  # Scripts
+  - "scripts/**"
+
+  # Configuration files
+  - "*.config.js"
+  - "*.config.ts"
+  - "jest.config.js"
+  - "tsconfig.json"
+
+  # Documentation
+  - "docs/**"
+  - "*.md"
+
+  # Configuration and meta files
+  - ".github/**"
+  - ".gitignore"
+  - "LICENSE"
+  - ".env*"
+  - "Dockerfile"
+  - "docker-compose*.yml"
+
+  # Dependencies
+  - "node_modules/**"
+  - "coverage/**"
+  - "*.lock"
+
+# ==========================================
+# Comment Configuration
+# ==========================================
+comment:
+  layout: "header, diff, flags, components, footer"
+  behavior: default
+  require_changes: false
