@@ -110,7 +110,7 @@ All clients access the same self-hosted ChromaDB through this remote MCP server.
 ### One-Command Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/scripts/install.sh | bash
 ```
 
 This will:
@@ -129,8 +129,8 @@ This will:
 ```bash
 # Download configuration files
 mkdir chromadb-remote-mcp && cd chromadb-remote-mcp
-curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/.env.example
+curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/docker-compose.yml
+curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/.env.example
 
 # Configure environment
 cp .env.example .env

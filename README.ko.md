@@ -110,7 +110,7 @@
 ### 원 커맨드 설치
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/scripts/install.sh | bash
 ```
 
 다음 작업을 자동으로 수행합니다:
@@ -129,8 +129,8 @@ curl -fsSL https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/
 ```bash
 # 설정 파일 다운로드
 mkdir chromadb-remote-mcp && cd chromadb-remote-mcp
-curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/main/.env.example
+curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/docker-compose.yml
+curl -O https://raw.githubusercontent.com/meloncafe/chromadb-remote-mcp/release/.env.example
 
 # 환경 설정
 cp .env.example .env
