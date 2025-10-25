@@ -1267,7 +1267,9 @@ describe("index.ts", () => {
 
       await mainPromise;
 
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("✅ Enabled"));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("✅ Enabled"),
+      );
       expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining("DISABLED"));
 
       consoleSpy.mockRestore();

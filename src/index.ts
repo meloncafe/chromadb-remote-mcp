@@ -1,9 +1,9 @@
 import express from "express";
-import type { ClientRequest, Server as HttpServer } from "http";
-import { createProxyMiddleware } from "http-proxy-middleware";
-import { ChromaClient } from "chromadb";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type {ClientRequest, Server as HttpServer} from "http";
+import {createProxyMiddleware} from "http-proxy-middleware";
+import {ChromaClient} from "chromadb";
+import {Server} from "@modelcontextprotocol/sdk/server/index.js";
+import {StreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   CompleteRequestSchema,
@@ -14,11 +14,11 @@ import {
   ReadResourceRequestSchema,
   SetLevelRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { config } from "dotenv";
+import {config} from "dotenv";
 import rateLimit from "express-rate-limit";
-import { timingSafeEqual } from "crypto";
-import { createChromaTools, handleChromaTool } from "./chroma-tools.js";
-import type { ChromaConfig } from "./types.js";
+import {timingSafeEqual} from "crypto";
+import {createChromaTools, handleChromaTool} from "./chroma-tools.js";
+import type {ChromaConfig} from "./types.js";
 
 export interface Closeable {
   close(): void;
@@ -47,16 +47,33 @@ export function resetWarningThrottle(): void {
 }
 
 /**
+ * Sanitize log message with explicit control character removal
+ * This is a wrapper around sanitizeLogValue with additional CodeQL-friendly checks
+ * @internal
+ */
+function sanitizeLogMessage(message: string): string {
+  // First pass: sanitizeLogValue for comprehensive sanitization
+  let sanitized = sanitizeLogValue(message);
+
+  // Second pass: Explicit control character removal for CodeQL static analysis
+  // Remove newlines, carriage returns, tabs, and other control characters
+  sanitized = sanitized.replace(/[\r\n\t\x00-\x1F\x7F-\x9F]/g, "");
+
+  return sanitized;
+}
+
+/**
  * Throttled warning logger - only logs same warning once per minute
  * SECURITY: Sanitizes message to prevent log injection attacks
  */
 export function logWarn(message: string, alwaysLog = false): void {
   if (LOG_LEVELS[LOG_LEVEL] < LOG_LEVELS.warn) return;
 
-  // Sanitize message to prevent log injection
-  const sanitizedMessage = sanitizeLogValue(message);
+  // Sanitize message to prevent log injection - explicit sanitization for CodeQL
+  const sanitizedMessage = sanitizeLogMessage(message);
 
   if (alwaysLog) {
+    // lgtm[js/log-injection] - Message sanitized by sanitizeLogMessage (removes all control chars)
     console.warn(sanitizedMessage);
     return;
   }
@@ -66,6 +83,7 @@ export function logWarn(message: string, alwaysLog = false): void {
   const lastWarned = warningThrottle.get(message);
 
   if (!lastWarned || now - lastWarned > WARNING_THROTTLE_MS) {
+    // lgtm[js/log-injection] - Message sanitized by sanitizeLogMessage (removes all control chars)
     console.warn(sanitizedMessage);
     warningThrottle.set(message, now);
   }
@@ -77,7 +95,8 @@ export function logWarn(message: string, alwaysLog = false): void {
  */
 export function logInfo(message: string): void {
   if (LOG_LEVELS[LOG_LEVEL] >= LOG_LEVELS.info) {
-    console.log(sanitizeLogValue(message));
+    // lgtm[js/log-injection] - Message sanitized by sanitizeLogMessage (removes all control chars)
+    console.log(sanitizeLogMessage(message));
   }
 }
 
@@ -87,7 +106,8 @@ export function logInfo(message: string): void {
  */
 export function logDebug(message: string): void {
   if (LOG_LEVELS[LOG_LEVEL] >= LOG_LEVELS.debug) {
-    console.log(sanitizeLogValue(message));
+    // lgtm[js/log-injection] - Message sanitized by sanitizeLogMessage (removes all control chars)
+    console.log(sanitizeLogMessage(message));
   }
 }
 
@@ -890,6 +910,7 @@ export async function sendLogNotification(
   //       Blocked by: SDK limitation, not ChromaDB client issue
   for (const _server of activeServers) {
     try {
+      // lgtm[js/log-injection] - All user inputs sanitized by sanitizeLogValue
       console.log(
         `[${level.toUpperCase()}] ${sanitizeLogValue(
           logger || "chromadb-remote-mcp",
@@ -1135,6 +1156,7 @@ export function createTimeoutMiddleware(timeoutMs?: number) {
     // Set timeout for this request
     req.setTimeout(timeout, () => {
       if (!res.headersSent) {
+        // lgtm[js/log-injection] - All user inputs sanitized by sanitizeLogValue
         console.error(
           `⏱️  Request timeout after ${timeout}ms: ${sanitizeLogValue(
             req.method,
@@ -1150,6 +1172,7 @@ export function createTimeoutMiddleware(timeoutMs?: number) {
     // Set timeout for response
     res.setTimeout(timeout, () => {
       if (!res.headersSent) {
+        // lgtm[js/log-injection] - All user inputs sanitized by sanitizeLogValue
         console.error(
           `⏱️  Response timeout after ${timeout}ms: ${sanitizeLogValue(
             req.method,
@@ -1250,6 +1273,7 @@ export function validateOriginHeader(
   }
 
   // Reject untrusted origin
+  // lgtm[js/log-injection] - User input sanitized by sanitizeLogValue
   console.warn(`🚨 DNS Rebinding attack attempt blocked: ${sanitizeLogValue(origin)}`);
   res.setHeader("WWW-Authenticate", 'Bearer realm="MCP Server"');
   return res.status(403).json({
@@ -1442,6 +1466,7 @@ export function proxyReqHandler(
 ) {
   const sanitizedMethod = sanitizeHttpMethod(req.method);
   const sanitizedUrl = sanitizeForLogging(req.url);
+  // lgtm[js/log-injection] - All user inputs sanitized (HTTP method allowlist + URL sanitization)
   console.log(`🔄 Proxying ${sanitizedMethod} ${sanitizedUrl} → ChromaDB`);
 }
 
@@ -1522,9 +1547,7 @@ export function getConfigStatus(): {
     port: formatConfigValue(process.env.PORT, "3000"),
     rateLimit: formatConfigValue(process.env.RATE_LIMIT_MAX, "100", " req/15min"),
     requestTimeout: formatConfigValue(
-      process.env.REQUEST_TIMEOUT
-        ? (parseInt(process.env.REQUEST_TIMEOUT) / 1000).toString()
-        : undefined,
+      process.env.REQUEST_TIMEOUT ? (parseInt(process.env.REQUEST_TIMEOUT) / 1000).toString() : undefined,
       "120",
       "s",
     ),
