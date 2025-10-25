@@ -1,9 +1,9 @@
 import express from "express";
-import type {ClientRequest, Server as HttpServer} from "http";
-import {createProxyMiddleware} from "http-proxy-middleware";
-import {ChromaClient} from "chromadb";
-import {Server} from "@modelcontextprotocol/sdk/server/index.js";
-import {StreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { ClientRequest, Server as HttpServer } from "http";
+import { createProxyMiddleware } from "http-proxy-middleware";
+import { ChromaClient } from "chromadb";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   CompleteRequestSchema,
@@ -14,11 +14,11 @@ import {
   ReadResourceRequestSchema,
   SetLevelRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import {config} from "dotenv";
+import { config } from "dotenv";
 import rateLimit from "express-rate-limit";
-import {timingSafeEqual} from "crypto";
-import {createChromaTools, handleChromaTool} from "./chroma-tools.js";
-import type {ChromaConfig} from "./types.js";
+import { timingSafeEqual } from "crypto";
+import { createChromaTools, handleChromaTool } from "./chroma-tools.js";
+import type { ChromaConfig } from "./types.js";
 
 export interface Closeable {
   close(): void;
@@ -984,7 +984,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: "chroma-remote-mcp",
-      version: "1.0.0",
+      version: "1.0.1",
     },
     {
       capabilities: {
@@ -1547,7 +1547,9 @@ export function getConfigStatus(): {
     port: formatConfigValue(process.env.PORT, "3000"),
     rateLimit: formatConfigValue(process.env.RATE_LIMIT_MAX, "100", " req/15min"),
     requestTimeout: formatConfigValue(
-      process.env.REQUEST_TIMEOUT ? (parseInt(process.env.REQUEST_TIMEOUT) / 1000).toString() : undefined,
+      process.env.REQUEST_TIMEOUT
+        ? (parseInt(process.env.REQUEST_TIMEOUT) / 1000).toString()
+        : undefined,
       "120",
       "s",
     ),
@@ -1580,7 +1582,7 @@ export async function main() {
     // Return server for graceful shutdown
     return app.listen(port, () => {
       console.log(`
-🚀 ChromaDB Remote MCP Server v1.0.0
+🚀 ChromaDB Remote MCP Server v1.0.1
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📡 Endpoints
