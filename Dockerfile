@@ -19,6 +19,10 @@ RUN yarn build
 # Production stage
 FROM node:22.21.0-slim
 
+# MCP Register Label
+LABEL io.modelcontextprotocol.server.name="io.github.meloncafe/chromadb-remote-mcp-server"
+
+
 # Create non-root user
 RUN groupadd -r mcpuser && useradd -r -g mcpuser mcpuser
 
