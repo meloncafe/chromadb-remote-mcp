@@ -1532,44 +1532,62 @@ describe("index.ts", () => {
 
     it("should sanitize query object with sensitive keys", () => {
       const result = sanitizeForLogging("/api", { apiKey: "secret", other: "value" });
-      expect(result).toContain('"apiKey":"***"');
-      expect(result).toContain('"other":"value"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"apiKey"');
+      expect(result).toContain('"value":"***"');
+      expect(result).toContain('"key":"other"');
+      expect(result).toContain('"value":"value"');
       expect(result).not.toContain("secret");
     });
 
     it("should sanitize query object with token key", () => {
       const result = sanitizeForLogging("/api", { token: "mytoken", data: "info" });
-      expect(result).toContain('"token":"***"');
-      expect(result).toContain('"data":"info"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"token"');
+      expect(result).toContain('"value":"***"');
+      expect(result).toContain('"key":"data"');
+      expect(result).toContain('"value":"info"');
       expect(result).not.toContain("mytoken");
     });
 
     it("should sanitize query object with api_key", () => {
       const result = sanitizeForLogging("/api", { api_key: "secret", other: "value" });
-      expect(result).toContain('"api_key":"***"');
-      expect(result).toContain('"other":"value"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"api_key"');
+      expect(result).toContain('"value":"***"');
+      expect(result).toContain('"key":"other"');
+      expect(result).toContain('"value":"value"');
       expect(result).not.toContain("secret");
     });
 
     it("should sanitize query object with auth key", () => {
       const result = sanitizeForLogging("/api", { auth: "credentials", other: "value" });
-      expect(result).toContain('"auth":"***"');
-      expect(result).toContain('"other":"value"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"auth"');
+      expect(result).toContain('"value":"***"');
+      expect(result).toContain('"key":"other"');
+      expect(result).toContain('"value":"value"');
       expect(result).not.toContain("credentials");
     });
 
     it("should sanitize query object with authorization key", () => {
       const result = sanitizeForLogging("/api", { authorization: "bearer", other: "value" });
-      expect(result).toContain('"authorization":"***"');
-      expect(result).toContain('"other":"value"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"authorization"');
+      expect(result).toContain('"value":"***"');
+      expect(result).toContain('"key":"other"');
+      expect(result).toContain('"value":"value"');
       expect(result).not.toContain("bearer");
     });
 
     it("should be case-insensitive for query object keys", () => {
       const result = sanitizeForLogging("/api", { APIKEY: "secret", Token: "tok", Other: "value" });
-      expect(result).toContain('"APIKEY":"***"');
-      expect(result).toContain('"Token":"***"');
-      expect(result).toContain('"Other":"value"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"APIKEY"');
+      expect(result).toContain('"value":"***"');
+      expect(result).toContain('"key":"Token"');
+      expect(result).toContain('"key":"Other"');
+      expect(result).toContain('"value":"value"');
     });
 
     it("should sanitize both URL and query object", () => {
@@ -1578,22 +1596,29 @@ describe("index.ts", () => {
         other: "value",
       });
       expect(result).toContain("token=***"); // URL parameter format
-      expect(result).toContain('"apiKey":"***"'); // Query object JSON format
-      expect(result).toContain('"other":"value"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"apiKey"');
+      expect(result).toContain('"value":"***"'); // Sensitive value masked
+      expect(result).toContain('"key":"other"');
+      expect(result).toContain('"value":"value"');
       expect(result).not.toContain("urltoken");
       expect(result).not.toContain("querykey");
     });
 
     it("should preserve non-sensitive query parameters", () => {
       const result = sanitizeForLogging("/api", { page: "1", limit: "10", sort: "asc" });
-      expect(result).toContain('"page":"1"');
-      expect(result).toContain('"limit":"10"');
-      expect(result).toContain('"sort":"asc"');
+      // New format: array of {key, value} objects
+      expect(result).toContain('"key":"page"');
+      expect(result).toContain('"value":"1"');
+      expect(result).toContain('"key":"limit"');
+      expect(result).toContain('"value":"10"');
+      expect(result).toContain('"key":"sort"');
+      expect(result).toContain('"value":"asc"');
     });
 
     it("should handle empty query object", () => {
       const result = sanitizeForLogging("/api", {});
-      expect(result).toBe("/api {}");
+      expect(result).toBe("/api []");
     });
 
     it("should handle null query object", () => {
