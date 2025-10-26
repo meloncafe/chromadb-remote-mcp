@@ -699,6 +699,41 @@ docker compose restart
 4. 인증이 활성화된 경우 인증 토큰 확인
 5. Custom Connector용: Tailscale Funnel이 활성화되어 있는지 확인
 
+### 로컬 네트워크에서 TLS Handshake 타임아웃
+
+서버와 같은 로컬 네트워크에서 Tailscale Funnel HTTPS로 접속하는 경우:
+
+**문제**: 같은 네트워크에서 `https://your-server.ts.net` 접속 시 TLS handshake 타임아웃 발생.
+
+**원인**: Tailscale Funnel은 같은 LAN의 클라이언트가 공개 Funnel 도메인으로 접속할 때 TLS 종료 처리에 문제가 있음.
+
+**해결**: Tailscale HTTPS 대신 로컬 네트워크 직접 연결 사용:
+
+```bash
+# 기존 설정 제거
+claude mcp remove chromadb
+
+# 로컬 IP 주소로 추가
+claude mcp add chromadb --transport http \
+  http://192.168.x.x:8080/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
+
+# 또는 DNS가 동작하면 호스트명 사용
+claude mcp add chromadb --transport http \
+  http://server-hostname:8080/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
+```
+
+**확인**:
+```bash
+# 로컬 네트워크 연결 테스트
+curl http://192.168.x.x:8080/health
+
+# 응답: {"status":"ok","service":"chroma-remote-mcp",...}
+```
+
+**참고**: 외부 클라이언트는 계속 Tailscale Funnel HTTPS를 사용하면 됩니다. 이 문제는 서버와 같은 LAN의 클라이언트에만 해당됩니다.
+
 ### 인증 오류 (401)
 
 ```bash
