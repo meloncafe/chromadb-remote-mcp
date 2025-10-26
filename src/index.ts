@@ -419,17 +419,20 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
 
   // SECURITY: Remove all other control characters that could be used for log injection
   // This includes: newlines (\n), carriage returns (\r), escape character (\x1b),
-  // null bytes (\x00), tabs (\t), and all other Unicode control characters
-  // Range: U+0000-U+001F (C0 controls), U+007F (DEL), U+0080-U+009F (C1 controls)
+  // null bytes (\x00), tabs (\t), all Unicode control chars, and Unicode line/paragraph separators.
+  // Range: U+0000-U+001F (C0), U+007F (DEL), U+0080-U+009F (C1), plus \u2028, \u2029 (LS/PS)
   // skipcq: JS-0097 - Intentionally matching control characters for security sanitization
-  sanitized = sanitized.replace(/[\u0000-\u001F\u007F-\u009F]/g, ""); // skipcq: JS-0004, JS-0117
+  sanitized = sanitized.replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029]/g, ""); // skipcq: JS-0004, JS-0117
+
+  // Additionally, explicitly remove standard newline characters for clarity
+  sanitized = sanitized.replace(/[\r\n]/g, "");
 
   // Truncate to prevent log flooding
   if (sanitized.length > maxLength) {
     sanitized = `${sanitized.substring(0, maxLength)}...`;
   }
 
-  return sanitized;
+  return `"${sanitized}"`; // Mark user-controlled content clearly in logs
 }
 
 // Sanitize HTTP method for logging to prevent log injection
@@ -1175,9 +1178,9 @@ export function createTimeoutMiddleware(timeoutMs?: number) {
       if (!res.headersSent) {
         // lgtm[js/log-injection] - All user inputs sanitized by sanitizeLogValue
         console.error(
-          `⏱️  Response timeout after ${timeout}ms: ${sanitizeLogValue(
+          `⏱️  Response timeout after ${timeout}ms: method=${sanitizeLogValue(
             req.method,
-          )} ${sanitizeLogValue(req.path)}`,
+          )} path=${sanitizeLogValue(req.path)}`,
         );
         res.status(504).json({
           error: "Gateway timeout",
