@@ -1141,7 +1141,6 @@ export function validateProtocolVersion(
     }
   }
 
-  logDebug("✅ validateProtocolVersion passed, calling next()");
   next();
 }
 
@@ -1247,12 +1246,9 @@ export function validateOriginHeader(
 ) {
   const origin = req.headers.origin;
 
-  logDebug(`🌍 Origin header: ${origin || "none (server-to-server)"}`);
-
   // Origin header is only present in browser requests
   // If no Origin header, allow (server-to-server requests are OK)
   if (!origin) {
-    logDebug("✅ validateOriginHeader passed (no origin), calling next()");
     return next();
   }
 
@@ -1295,11 +1291,8 @@ export function createAuthMiddleware(authToken?: string) {
     res: express.Response,
     next: express.NextFunction,
   ) {
-    logDebug(`🔐 Checking authentication (authToken ${authToken ? "set" : "not set"})`);
-
     // Skip auth if authToken is not set
     if (!authToken) {
-      logDebug("✅ Auth skipped (no token configured), calling next()");
       return next();
     }
 
@@ -1372,7 +1365,6 @@ export function createAuthMiddleware(authToken?: string) {
     }
 
     // Token is valid
-    logDebug("✅ Auth passed (token valid), calling next()");
     return next();
   };
 }
@@ -1391,8 +1383,6 @@ export function createCloseHandler(server: Closeable, transport: Closeable) {
 
 // MCP endpoint handler - exported for testing
 export async function mcpHandler(req: express.Request, res: express.Response) {
-  logDebug("🎯 mcpHandler ENTERED");
-
   const sanitizedUrl = sanitizeForLogging(req.url, req.query);
   const sanitizedMethod = sanitizeLogValue(req.body?.method || "unknown");
 
@@ -1415,18 +1405,8 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
     // Connect server to transport
     await server.connect(transport);
 
-    // Log request body for debugging
-    await mcpLog.debug("MCP request body received", {
-      hasBody: !!req.body,
-      bodyKeys: req.body ? Object.keys(req.body) : [],
-      method: req.body?.method,
-      id: req.body?.id,
-    });
-
     // Handle the request
-    await mcpLog.debug("Calling transport.handleRequest");
     await transport.handleRequest(req, res, req.body);
-    await mcpLog.debug("transport.handleRequest completed");
 
     // Cleanup on request close
     /* istanbul ignore next */
