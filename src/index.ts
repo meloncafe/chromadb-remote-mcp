@@ -1405,8 +1405,18 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
     // Connect server to transport
     await server.connect(transport);
 
+    // Log request body for debugging
+    await mcpLog.debug("MCP request body received", {
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      method: req.body?.method,
+      id: req.body?.id,
+    });
+
     // Handle the request
+    await mcpLog.debug("Calling transport.handleRequest");
     await transport.handleRequest(req, res, req.body);
+    await mcpLog.debug("transport.handleRequest completed");
 
     // Cleanup on request close
     /* istanbul ignore next */
