@@ -399,7 +399,7 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
       return (code >= 32 && code <= 126) || code >= 160;
     })
     .join('')
-    .slice(0, 200); // Limit length
+    .slice(0, maxLength); // Limit length
 
   return sanitized || '[empty]';
 }
@@ -883,7 +883,6 @@ export async function sendLogNotification(
   //       Blocked by: SDK limitation, not ChromaDB client issue
   for (const _server of activeServers) {
     try {
-      // lgtm[js/log-injection] - All user inputs sanitized by sanitizeLogValue
       console.log(
         `[${level.toUpperCase()}] ${sanitizeLogValue(
           logger || "chromadb-remote-mcp",
