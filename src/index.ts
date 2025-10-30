@@ -1359,7 +1359,7 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
   const sanitizedMethod = sanitizeLogValue(req.body?.method || "unknown");
 
   // Use MCP logging for request tracking
-  await mcpLog.info(`Received MCP request (from user): '${sanitizedMethod}'`, {
+  await mcpLog.info(`Received MCP request (incoming): '${sanitizedMethod}'`, {
     url: sanitizedUrl,
     method: sanitizedMethod,
   });
