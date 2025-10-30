@@ -3,6 +3,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![MseeP.ai](https://img.shields.io/badge/MseeP.ai-Audited-4c1)](https://mseep.ai/app/meloncafe-chromadb-remote-mcp)
 [![codecov](https://codecov.io/gh/meloncafe/chromadb-remote-mcp/graph/badge.svg?token=0abUQsve4y)](https://codecov.io/gh/meloncafe/chromadb-remote-mcp)
 [![DeepSource](https://app.deepsource.com/gh/meloncafe/chromadb-remote-mcp.svg/?label=Active+Issues&show_trend=true&token=Mzfb6tMnlzBIxaJO9CsYO3e8)](https://app.deepsource.com/gh/meloncafe/chromadb-remote-mcp/)
 
