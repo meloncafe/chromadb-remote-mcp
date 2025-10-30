@@ -47,11 +47,11 @@ export function resetWarningThrottle(): void {
 }
 
 /**
- * Remove all control characters from a string for security sanitization
+ * Shared helper to filter control characters from a string
  * @param {string} str - Input string
- * @returns {string} Sanitized string without control characters
+ * @returns {string} String with control characters filtered out
  */
-function removeControlCharacters(str: string): string {
+function filterControlCharacters(str: string): string {
   return str
     .split('')
     .filter(char => {
@@ -60,6 +60,15 @@ function removeControlCharacters(str: string): string {
       return (code >= 32 && code <= 126) || code >= 160;
     })
     .join('');
+}
+
+/**
+ * Remove all control characters from a string for security sanitization
+ * @param {string} str - Input string
+ * @returns {string} Sanitized string without control characters
+ */
+function removeControlCharacters(str: string): string {
+  return filterControlCharacters(str);
 }
 
 /**
@@ -391,15 +400,7 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
   const str = String(value);
 
   // Remove all control characters including newlines
-  const sanitized = str
-    .split('')
-    .filter(char => {
-      const code = char.charCodeAt(0);
-      // Only allow printable characters (32-126) and safe extended (160+)
-      return (code >= 32 && code <= 126) || code >= 160;
-    })
-    .join('')
-    .slice(0, maxLength); // Limit length
+  const sanitized = filterControlCharacters(str).slice(0, maxLength); // Limit length
 
   return sanitized || '[empty]';
 }
