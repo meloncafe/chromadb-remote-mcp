@@ -504,7 +504,7 @@ export function sanitizeForLogging(url: string | undefined, query?: unknown): st
       // Add to safe array structure instead of using dynamic property assignment
       // This prevents prototype pollution while maintaining all query parameters
       sanitizedPairs.push({
-        key: key,
+        key,
         value: isSensitive ? "***" : value,
       });
     }
