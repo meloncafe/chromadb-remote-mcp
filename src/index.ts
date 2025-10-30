@@ -384,7 +384,7 @@ export function resetChromaClient(): void {
  * Removes all control characters and limits string length
  */
 export function sanitizeLogValue(value: unknown, maxLength = 200): string {
-    if (value === null || value === undefined) {
+  if (value === null || value === undefined) {
     return '[null]';
   }
 
