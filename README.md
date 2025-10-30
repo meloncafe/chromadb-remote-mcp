@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/meloncafe-chromadb-remote-mcp-badge.png)](https://mseep.ai/app/meloncafe-chromadb-remote-mcp)
+
 # ChromaDB Remote MCP Server
 
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-blue)](https://modelcontextprotocol.io)
