@@ -1,0 +1,13 @@
+name: "CodeQL config"
+
+queries:
+  - uses: security-and-quality
+
+query-filters:
+  - exclude:
+      id: js/log-injection
+
+paths-ignore:
+  - "**/node_modules"
+  - "**/*.test.ts"
+  - "**/dist"
