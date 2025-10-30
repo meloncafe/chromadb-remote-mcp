@@ -174,7 +174,7 @@ form-action 'self'          # 폼 제출 제한
 - ✅ **CWE 발견 사항**: 모든 발견 사항 해결 및 수정
 - ✅ **코드 품질**: 업계 표준 및 모범 사례 충족
 
-최신 분석 보고서 보기: [DeepSource 공개 보고서](https://app.deepsource.com/report/1b2c483f-8fa9-4829-8fac-24793d1a9284)
+최신 분석 보고서 보기: [DeepSource 공개 보고서](https://app.deepsource.com/report/1c2f3d5c-df61-4e60-b20c-5a82adc729f7)
 
 > **참고**: 코드가 업데이트되거나 월별로 보고서 링크가 변경될 수 있습니다. 현재 상태는 저장소 배지를 확인하십시오.
 

@@ -956,7 +956,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: "chroma-remote-mcp",
-      version: "1.0.1",
+      version: "1.0.2",
     },
     {
       capabilities: {
@@ -1554,7 +1554,7 @@ export async function main() {
     // Return server for graceful shutdown
     return app.listen(port, () => {
       console.log(`
-🚀 ChromaDB Remote MCP Server v1.0.1
+🚀 ChromaDB Remote MCP Server v1.0.2
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📡 Endpoints
