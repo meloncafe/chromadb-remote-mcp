@@ -47,29 +47,30 @@ export function resetWarningThrottle(): void {
 }
 
 /**
+ * Remove all control characters from a string for security sanitization
+ * @param {string} str - Input string
+ * @returns {string} Sanitized string without control characters
+ */
+function removeControlCharacters(str: string): string {
+  // Remove common whitespace control characters
+  let result = str.replace(/[\r\n\t]/gu, '');
+
+  // Remove remaining ASCII control characters (0x00-0x1F, 0x7F)
+  result = result.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/gu, '');
+
+  // Remove C1 control characters (0x80-0x9F)
+  result = result.replace(/[\x80-\x9F]/gu, '');
+
+  return result;
+}
+
+/**
  * Sanitize log message with explicit control character removal
  * This is a wrapper around sanitizeLogValue with additional CodeQL-friendly checks
  * @internal
  */
 function sanitizeLogMessage(message: string): string {
-  // First pass: sanitizeLogValue for comprehensive sanitization
-  let sanitized = sanitizeLogValue(message);
-
-  // Second pass: Explicit control character removal for CodeQL static analysis
-  // Remove all control characters for security:
-  // - Common whitespace (\r, \n, \t)
-  // - All ASCII control chars (0x00-0x1F including NULL, SOH, STX, etc.)
-  // - DEL and C1 control chars (0x7F-0x9F)
-  //
-  // Using 'u' flag for:
-  // - Correct UTF-16 surrogate pair handling
-  // - Strict regex syntax validation
-  //
-  // Note: Hex ranges are intentional for comprehensive control character removal
-  // to prevent potential injection attacks. This is a security-critical sanitization.
-  sanitized = sanitized.replace(/[\r\n\t\x00-\x1F\x7F-\x9F]/gu, "");
-
-  return sanitized;
+  return removeControlCharacters(message);
 }
 
 /**
