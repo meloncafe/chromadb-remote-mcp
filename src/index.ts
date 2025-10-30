@@ -52,16 +52,14 @@ export function resetWarningThrottle(): void {
  * @returns {string} Sanitized string without control characters
  */
 function removeControlCharacters(str: string): string {
-  // Remove common whitespace control characters
-  let result = str.replace(/[\r\n\t]/gu, '');
-
-  // Remove remaining ASCII control characters (0x00-0x1F, 0x7F)
-  result = result.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/gu, '');
-
-  // Remove C1 control characters (0x80-0x9F)
-  result = result.replace(/[\x80-\x9F]/gu, '');
-
-  return result;
+  return str
+    .split('')
+    .filter(char => {
+      const code = char.charCodeAt(0);
+      // Keep only: printable ASCII (32-126) and safe extended Unicode (160+)
+      return (code >= 32 && code <= 126) || code >= 160;
+    })
+    .join('');
 }
 
 /**
