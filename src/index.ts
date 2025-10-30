@@ -82,7 +82,6 @@ export function logWarn(message: string, alwaysLog = false): void {
   const sanitizedMessage = sanitizeLogMessage(message);
 
   if (alwaysLog) {
-    // lgtm[js/log-injection] - Message sanitized by sanitizeLogMessage (removes all control chars)
     console.warn(sanitizedMessage);
     return;
   }
@@ -381,64 +380,28 @@ export function resetChromaClient(): void {
 }
 
 /**
- * Sanitize a string value to prevent log injection attacks
- * Removes newlines, carriage returns, and other control characters that could be used
- * to forge log entries or execute terminal control sequences
- *
- * Security Context:
- * - Prevents log injection attacks where attackers insert newlines to forge log entries
- * - Prevents ANSI escape sequence injection that could manipulate terminal output
- * - Prevents control character injection for log spoofing attacks
- *
- * @param value - The string value to sanitize
- * @param maxLength - Maximum length to truncate (default: 200)
- * @returns Sanitized string safe for logging
- *
- * @example
- * // Prevents log injection attack
- * sanitizeLogValue("user\n[INFO] Fake admin login") // "user[INFO] Fake admin login"
- *
- * @example
- * // Prevents ANSI escape sequence injection
- * sanitizeLogValue("text\x1b[31mred\x1b[0m") // "textred"
+ * Sanitize value for safe logging (prevents log injection)
+ * Removes all control characters and limits string length
  */
 export function sanitizeLogValue(value: unknown, maxLength = 200): string {
-  if (value === null || value === undefined) {
-    return String(value);
+    if (value === null || value === undefined) {
+    return '[null]';
   }
 
-  // Convert to string - use JSON.stringify for objects to preserve structure
-  let sanitized: string;
-  if (typeof value === "object") {
-    try {
-      sanitized = JSON.stringify(value);
-    } catch {
-      sanitized = String(value);
-    }
-  } else {
-    sanitized = String(value);
-  }
+  const str = String(value);
 
-  // SECURITY: Remove ANSI escape sequences (terminal color codes, cursor control, etc.)
-  // Pattern: ESC [ ... letter (where ESC is ASCII 27 = \x1b)
-  // This prevents terminal control sequence injection attacks
-  // Example: "\x1b[31m" (red color), "\x1b[2J" (clear screen)
-  // skipcq: JS-0097 - Intentionally matching ESC character (\x1b) for security sanitization
-  sanitized = sanitized.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ""); // skipcq: JS-W1035, JS-0004, JS-0117
+  // Remove all control characters including newlines
+  const sanitized = str
+    .split('')
+    .filter(char => {
+      const code = char.charCodeAt(0);
+      // Only allow printable characters (32-126) and safe extended (160+)
+      return (code >= 32 && code <= 126) || code >= 160;
+    })
+    .join('')
+    .slice(0, 200); // Limit length
 
-  // SECURITY: Remove all other control characters that could be used for log injection
-  // This includes: newlines (\n), carriage returns (\r), escape character (\x1b),
-  // null bytes (\x00), tabs (\t), and all other Unicode control characters
-  // Range: U+0000-U+001F (C0 controls), U+007F (DEL), U+0080-U+009F (C1 controls)
-  // skipcq: JS-0097 - Intentionally matching control characters for security sanitization
-  sanitized = sanitized.replace(/[\u0000-\u001F\u007F-\u009F]/g, ""); // skipcq: JS-0004, JS-0117
-
-  // Truncate to prevent log flooding
-  if (sanitized.length > maxLength) {
-    sanitized = `${sanitized.substring(0, maxLength)}...`;
-  }
-
-  return sanitized;
+  return sanitized || '[empty]';
 }
 
 // Sanitize HTTP method for logging to prevent log injection
