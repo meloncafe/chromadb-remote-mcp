@@ -385,21 +385,41 @@ export function resetChromaClient(): void {
  */
 export function sanitizeLogValue(value: unknown, maxLength = 200): string {
   if (value === null || value === undefined) {
-    return '[null]';
+    return String(value);
   }
 
-  const str = String(value);
+  // Convert to string - use JSON.stringify for objects to preserve structure
+  let str: string;
+  if (typeof value === "object") {
+    try {
+      str = JSON.stringify(value);
+    } catch {
+      str = String(value);
+    }
+  } else {
+    str = String(value);
+  }
+
+  // Remove ANSI escape sequences (terminal color codes, cursor control, etc.)
+  // Pattern: ESC [ ... letter (where ESC is ASCII 27 = \x1b)
+  // This prevents terminal control sequence injection attacks
+  // skipcq: JS-0097 - Intentionally matching ESC character (\x1b) for security sanitization
+  let sanitized = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ""); // skipcq: JS-W1035, JS-0004, JS-0117
 
   // Remove all control characters including newlines
-  const sanitized = str
+  sanitized = sanitized
     .split('')
     .filter(char => {
       const code = char.charCodeAt(0);
       // Only allow printable characters (32-126) and safe extended (160+)
       return (code >= 32 && code <= 126) || code >= 160;
     })
-    .join('')
-    .slice(0, maxLength); // Limit length
+    .join('');
+
+  // Truncate to prevent log flooding
+  if (sanitized.length > maxLength) {
+    sanitized = `${sanitized.substring(0, maxLength)}...`;
+  }
 
   return sanitized || '[empty]';
 }
