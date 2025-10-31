@@ -52,7 +52,17 @@ export function resetWarningThrottle(): void {
  * @returns {string} String with control characters filtered out
  */
 function filterControlCharacters(str: string): string {
-  return str
+  // First, remove ANSI escape sequences (ESC followed by bracket and parameters)
+  // This handles sequences like \x1b[31m, \x1b[2J, etc.
+  // eslint-disable-next-line no-control-regex
+  let result = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  
+  // Also remove other ESC sequences like \x1b(, \x1b), etc.
+  // eslint-disable-next-line no-control-regex
+  result = result.replace(/\x1b[()][AB012]/g, '');
+  
+  // Then filter out remaining control characters
+  return result
     .split('')
     .filter(char => {
       const code = char.charCodeAt(0);
