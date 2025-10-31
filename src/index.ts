@@ -47,12 +47,25 @@ export function resetWarningThrottle(): void {
 }
 
 /**
- * Remove all control characters from a string for security sanitization
+ * Shared helper to filter control characters from a string
  * @param {string} str - Input string
- * @returns {string} Sanitized string without control characters
+ * @returns {string} String with control characters filtered out
  */
-function removeControlCharacters(str: string): string {
-  return str
+function filterControlCharacters(str: string): string {
+  // First, remove ANSI escape sequences (ESC followed by bracket and parameters)
+  // This handles sequences like \x1b[31m, \x1b[2J, etc.
+  // Note: \x1b is the ESC character (ASCII 27) used in ANSI escape sequences
+  // We intentionally match this control character to remove terminal escape codes
+  // eslint-disable-next-line no-control-regex
+  let result = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/gu, '');  // skipcq: JS-0004, JS-W1035
+  
+  // Also remove other ESC sequences like \x1b(, \x1b), etc.
+  // Note: These are character set selection sequences used in terminals
+  // eslint-disable-next-line no-control-regex
+  result = result.replace(/\x1b[()][AB012]/gu, '');  // skipcq: JS-0004, JS-W1035
+  
+  // Then filter out remaining control characters
+  return result
     .split('')
     .filter(char => {
       const code = char.charCodeAt(0);
@@ -60,6 +73,15 @@ function removeControlCharacters(str: string): string {
       return (code >= 32 && code <= 126) || code >= 160;
     })
     .join('');
+}
+
+/**
+ * Remove all control characters from a string for security sanitization
+ * @param {string} str - Input string
+ * @returns {string} Sanitized string without control characters
+ */
+function removeControlCharacters(str: string): string {
+  return filterControlCharacters(str);
 }
 
 /**
@@ -384,13 +406,17 @@ export function resetChromaClient(): void {
  * Removes all control characters and limits string length
  */
 export function sanitizeLogValue(value: unknown, maxLength = 200): string {
-  if (value === null || value === undefined) {
-    return String(value);
+  if (value === null) {
+    return 'null';
+  }
+  
+  if (value === undefined) {
+    return 'undefined';
   }
 
-  // Convert to string - use JSON.stringify for objects to preserve structure
+  // Convert objects to JSON string for better logging
   let str: string;
-  if (typeof value === "object") {
+  if (typeof value === 'object') {
     try {
       str = JSON.stringify(value);
     } catch {
@@ -400,25 +426,12 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
     str = String(value);
   }
 
-  // Remove ANSI escape sequences (terminal color codes, cursor control, etc.)
-  // Pattern: ESC [ ... letter (where ESC is ASCII 27 = \x1b)
-  // This prevents terminal control sequence injection attacks
-  // skipcq: JS-0097 - Intentionally matching ESC character (\x1b) for security sanitization
-  let sanitized = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ""); // skipcq: JS-W1035, JS-0004, JS-0117
-
   // Remove all control characters including newlines
-  sanitized = sanitized
-    .split('')
-    .filter(char => {
-      const code = char.charCodeAt(0);
-      // Only allow printable characters (32-126) and safe extended (160+)
-      return (code >= 32 && code <= 126) || code >= 160;
-    })
-    .join('');
-
-  // Truncate to prevent log flooding
+  const sanitized = filterControlCharacters(str);
+  
+  // Truncate and add ellipsis if needed
   if (sanitized.length > maxLength) {
-    sanitized = `${sanitized.substring(0, maxLength)}...`;
+    return `${sanitized.slice(0, maxLength)}...`;
   }
 
   return sanitized || '[empty]';
