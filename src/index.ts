@@ -57,11 +57,13 @@ function filterControlCharacters(str: string): string {
   // Note: \x1b is the ESC character (ASCII 27) used in ANSI escape sequences
   // We intentionally match this control character to remove terminal escape codes
   // eslint-disable-next-line no-control-regex
+  // skipcq: JS-0562 - Intentionally matching ESC character to remove ANSI sequences
   let result = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/gu, '');
   
   // Also remove other ESC sequences like \x1b(, \x1b), etc.
   // Note: These are character set selection sequences used in terminals
   // eslint-disable-next-line no-control-regex
+  // skipcq: JS-0562 - Intentionally matching ESC character to remove ANSI sequences
   result = result.replace(/\x1b[()][AB012]/gu, '');
   
   // Then filter out remaining control characters
