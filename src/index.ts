@@ -384,12 +384,30 @@ export function resetChromaClient(): void {
  * Removes all control characters and limits string length
  */
 export function sanitizeLogValue(value: unknown, maxLength = 200): string {
-  if (value === null || value === undefined) {
-    return '[null]';
+  if (value === null) {
+    return 'null';
+  }
+  
+  if (value === undefined) {
+    return 'undefined';
   }
 
-  const str = String(value);
+  // Convert objects to JSON string for better visibility
+  let str: string;
+  if (typeof value === 'object') {
+    try {
+      str = JSON.stringify(value);
+    } catch {
+      str = String(value);
+    }
+  } else {
+    str = String(value);
+  }
 
+  // First, remove ANSI escape sequences (ESC followed by [ and then characters until m)
+  // Pattern: \x1b\[.*?m or \x1b\[.*?[A-Za-z]
+  str = str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+  
   // Remove all control characters including newlines
   const sanitized = str
     .split('')
@@ -398,8 +416,12 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
       // Only allow printable characters (32-126) and safe extended (160+)
       return (code >= 32 && code <= 126) || code >= 160;
     })
-    .join('')
-    .slice(0, maxLength); // Limit length
+    .join('');
+
+  // Truncate and add ellipsis if needed
+  if (sanitized.length > maxLength) {
+    return sanitized.slice(0, maxLength) + '...';
+  }
 
   return sanitized || '[empty]';
 }
