@@ -11,7 +11,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "devsaurus/chromadb-remote-mcp:latest",
+      "identifier": "devsaurus/chromadb-remote-mcp",
       "tag": "latest",
       "digest": "sha256:7d3bdda2b7b52e030ee15ae97789eae2b5931a59a298a2cc3b524ffd77fdbccc",
       "transport": {
