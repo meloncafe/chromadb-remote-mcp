@@ -468,8 +468,8 @@ export function sanitizeForLogging(url: string | undefined, query?: unknown): st
     url = "";
   }
 
-  // Remove any CR, LF characters to prevent log injection
-  let sanitized = url.replace(/[\r\n]/g, "");
+  // Remove all control characters to prevent log injection
+  let sanitized = filterControlCharacters(url);
 
   // Mask sensitive query parameters in URL
   const sensitiveParams = ["apiKey", "token", "api_key", "auth", "authorization"];
