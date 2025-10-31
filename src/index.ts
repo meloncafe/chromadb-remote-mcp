@@ -406,7 +406,7 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
 
   // First, remove ANSI escape sequences (ESC followed by [ and then characters until m)
   // Pattern: \x1b\[.*?m or \x1b\[.*?[A-Za-z]
-  str = str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+  str = str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');  // skipcq: JS-0004, JS-0117, JS-W1035
   
   // Remove all control characters including newlines
   const sanitized = str
@@ -420,7 +420,7 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
 
   // Truncate and add ellipsis if needed
   if (sanitized.length > maxLength) {
-    return sanitized.slice(0, maxLength) + '...';
+    return `${sanitized.slice(0, maxLength)}...`;
   }
 
   return sanitized || '[empty]';
