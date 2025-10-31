@@ -91,7 +91,7 @@ jobs:
       - name: TruffleHog OSS
         uses: trufflesecurity/trufflehog@main
         with:
-          extra_args: --results=verified,unknown
+          extra_args: --results=verified
 
   typescript-check:
     name: TypeScript Type Check
