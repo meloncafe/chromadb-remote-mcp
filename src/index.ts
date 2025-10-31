@@ -418,7 +418,7 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
   
   // Truncate and add ellipsis if needed
   if (sanitized.length > maxLength) {
-    return sanitized.slice(0, maxLength) + '...';
+    return `${sanitized.slice(0, maxLength)}...`;
   }
 
   return sanitized || '[empty]';
