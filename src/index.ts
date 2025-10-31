@@ -393,14 +393,33 @@ export function resetChromaClient(): void {
  * Removes all control characters and limits string length
  */
 export function sanitizeLogValue(value: unknown, maxLength = 200): string {
-  if (value === null || value === undefined) {
-    return '[null]';
+  if (value === null) {
+    return 'null';
+  }
+  
+  if (value === undefined) {
+    return 'undefined';
   }
 
-  const str = String(value);
+  // Convert objects to JSON string for better logging
+  let str: string;
+  if (typeof value === 'object') {
+    try {
+      str = JSON.stringify(value);
+    } catch {
+      str = String(value);
+    }
+  } else {
+    str = String(value);
+  }
 
   // Remove all control characters including newlines
-  const sanitized = filterControlCharacters(str).slice(0, maxLength); // Limit length
+  const sanitized = filterControlCharacters(str);
+  
+  // Truncate and add ellipsis if needed
+  if (sanitized.length > maxLength) {
+    return sanitized.slice(0, maxLength) + '...';
+  }
 
   return sanitized || '[empty]';
 }
