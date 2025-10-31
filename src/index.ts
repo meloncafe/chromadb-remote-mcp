@@ -76,21 +76,12 @@ function filterControlCharacters(str: string): string {
 }
 
 /**
- * Remove all control characters from a string for security sanitization
- * @param {string} str - Input string
- * @returns {string} Sanitized string without control characters
- */
-function removeControlCharacters(str: string): string {
-  return filterControlCharacters(str);
-}
-
-/**
  * Sanitize log message with explicit control character removal
  * This is a wrapper around sanitizeLogValue with additional CodeQL-friendly checks
  * @internal
  */
 function sanitizeLogMessage(message: string): string {
-  return removeControlCharacters(message);
+  return filterControlCharacters(message);
 }
 
 /**
