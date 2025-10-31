@@ -1,9 +1,9 @@
 import express from "express";
-import type { ClientRequest, Server as HttpServer } from "http";
-import { createProxyMiddleware } from "http-proxy-middleware";
-import { ChromaClient } from "chromadb";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type {ClientRequest, Server as HttpServer} from "http";
+import {createProxyMiddleware} from "http-proxy-middleware";
+import {ChromaClient} from "chromadb";
+import {Server} from "@modelcontextprotocol/sdk/server/index.js";
+import {StreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   CompleteRequestSchema,
@@ -14,11 +14,11 @@ import {
   ReadResourceRequestSchema,
   SetLevelRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { config } from "dotenv";
+import {config} from "dotenv";
 import rateLimit from "express-rate-limit";
-import { timingSafeEqual } from "crypto";
-import { createChromaTools, handleChromaTool } from "./chroma-tools.js";
-import type { ChromaConfig } from "./types.js";
+import {timingSafeEqual} from "crypto";
+import {createChromaTools, handleChromaTool} from "./chroma-tools.js";
+import type {ChromaConfig} from "./types.js";
 
 export interface Closeable {
   close(): void;
@@ -47,19 +47,41 @@ export function resetWarningThrottle(): void {
 }
 
 /**
+ * Shared helper to filter control characters from a string
+ * @param {string} str - Input string
+ * @returns {string} String with control characters filtered out
+ */
+function filterControlCharacters(str: string): string {
+  // First, remove ANSI escape sequences (ESC followed by bracket and parameters)
+  // This handles sequences like \x1b[31m, \x1b[2J, etc.
+  // Note: \x1b is the ESC character (ASCII 27) used in ANSI escape sequences
+  // We intentionally match this control character to remove terminal escape codes
+  // eslint-disable-next-line no-control-regex
+  let result = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/gu, ""); // skipcq: JS-0004, JS-W1035
+  
+  // Also remove other ESC sequences like \x1b(, \x1b), etc.
+  // Note: These are character set selection sequences used in terminals
+  // eslint-disable-next-line no-control-regex
+  result = result.replace(/\x1b[()][AB012]/gu, "");  // skipcq: JS-0004, JS-W1035
+  
+  // Then filter out remaining control characters
+  return result
+    .split('')
+    .filter(char => {
+      const code = char.charCodeAt(0);
+      // Keep only: printable ASCII (32-126) and safe extended Unicode (160+)
+      return (code >= 32 && code <= 126) || code >= 160;
+    })
+    .join('');
+}
+
+/**
  * Sanitize log message with explicit control character removal
  * This is a wrapper around sanitizeLogValue with additional CodeQL-friendly checks
  * @internal
  */
 function sanitizeLogMessage(message: string): string {
-  // First pass: sanitizeLogValue for comprehensive sanitization
-  let sanitized = sanitizeLogValue(message);
-
-  // Second pass: Explicit control character removal for CodeQL static analysis
-  // Remove newlines, carriage returns, tabs, and other control characters
-  sanitized = sanitized.replace(/[\r\n\t\x00-\x1F\x7F-\x9F]/g, "");
-
-  return sanitized;
+  return filterControlCharacters(message);
 }
 
 /**
@@ -73,7 +95,6 @@ export function logWarn(message: string, alwaysLog = false): void {
   const sanitizedMessage = sanitizeLogMessage(message);
 
   if (alwaysLog) {
-    // lgtm[js/log-injection] - Message sanitized by sanitizeLogMessage (removes all control chars)
     console.warn(sanitizedMessage);
     return;
   }
@@ -372,64 +393,39 @@ export function resetChromaClient(): void {
 }
 
 /**
- * Sanitize a string value to prevent log injection attacks
- * Removes newlines, carriage returns, and other control characters that could be used
- * to forge log entries or execute terminal control sequences
- *
- * Security Context:
- * - Prevents log injection attacks where attackers insert newlines to forge log entries
- * - Prevents ANSI escape sequence injection that could manipulate terminal output
- * - Prevents control character injection for log spoofing attacks
- *
- * @param value - The string value to sanitize
- * @param maxLength - Maximum length to truncate (default: 200)
- * @returns Sanitized string safe for logging
- *
- * @example
- * // Prevents log injection attack
- * sanitizeLogValue("user\n[INFO] Fake admin login") // "user[INFO] Fake admin login"
- *
- * @example
- * // Prevents ANSI escape sequence injection
- * sanitizeLogValue("text\x1b[31mred\x1b[0m") // "textred"
+ * Sanitize value for safe logging (prevents log injection)
+ * Removes all control characters and limits string length
  */
 export function sanitizeLogValue(value: unknown, maxLength = 200): string {
-  if (value === null || value === undefined) {
-    return String(value);
+  if (value === null) {
+    return 'null';
+  }
+  
+  if (value === undefined) {
+    return 'undefined';
   }
 
-  // Convert to string - use JSON.stringify for objects to preserve structure
-  let sanitized: string;
-  if (typeof value === "object") {
+  // Convert objects to JSON string for better logging
+  let str: string;
+  if (typeof value === 'object') {
     try {
-      sanitized = JSON.stringify(value);
+      str = JSON.stringify(value);
     } catch {
-      sanitized = String(value);
+      str = String(value);
     }
   } else {
-    sanitized = String(value);
+    str = String(value);
   }
 
-  // SECURITY: Remove ANSI escape sequences (terminal color codes, cursor control, etc.)
-  // Pattern: ESC [ ... letter (where ESC is ASCII 27 = \x1b)
-  // This prevents terminal control sequence injection attacks
-  // Example: "\x1b[31m" (red color), "\x1b[2J" (clear screen)
-  // skipcq: JS-0097 - Intentionally matching ESC character (\x1b) for security sanitization
-  sanitized = sanitized.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ""); // skipcq: JS-W1035, JS-0004, JS-0117
-
-  // SECURITY: Remove all other control characters that could be used for log injection
-  // This includes: newlines (\n), carriage returns (\r), escape character (\x1b),
-  // null bytes (\x00), tabs (\t), and all other Unicode control characters
-  // Range: U+0000-U+001F (C0 controls), U+007F (DEL), U+0080-U+009F (C1 controls)
-  // skipcq: JS-0097 - Intentionally matching control characters for security sanitization
-  sanitized = sanitized.replace(/[\u0000-\u001F\u007F-\u009F]/g, ""); // skipcq: JS-0004, JS-0117
-
-  // Truncate to prevent log flooding
+  // Remove all control characters including newlines
+  const sanitized = filterControlCharacters(str);
+  
+  // Truncate and add ellipsis if needed
   if (sanitized.length > maxLength) {
-    sanitized = `${sanitized.substring(0, maxLength)}...`;
+    return `${sanitized.slice(0, maxLength)}...`;
   }
 
-  return sanitized;
+  return sanitized || '[empty]';
 }
 
 // Sanitize HTTP method for logging to prevent log injection
@@ -463,7 +459,8 @@ export function sanitizeForLogging(url: string | undefined, query?: unknown): st
     url = "";
   }
 
-  let sanitized = url;
+  // Remove all control characters to prevent log injection
+  let sanitized = filterControlCharacters(url);
 
   // Mask sensitive query parameters in URL
   const sensitiveParams = ["apiKey", "token", "api_key", "auth", "authorization"];
@@ -493,7 +490,7 @@ export function sanitizeForLogging(url: string | undefined, query?: unknown): st
       // Add to safe array structure instead of using dynamic property assignment
       // This prevents prototype pollution while maintaining all query parameters
       sanitizedPairs.push({
-        key: key,
+        key,
         value: isSensitive ? "***" : value,
       });
     }
@@ -572,14 +569,14 @@ export function sanitizeErrorForClient(
 // MCP request handlers - exported for testing
 export async function listToolsHandler() {
   const tools = createChromaTools(getChromaClient());
-  return { tools };
+  return {tools};
 }
 
 // MCP tool call handler - request structure from MCP SDK
 export async function callToolHandler(request: {
   params: { name: string; arguments?: Record<string, unknown> };
 }) {
-  const { name, arguments: args } = request.params;
+  const {name, arguments: args} = request.params;
   return handleChromaTool(getChromaClient(), name, args || {});
 }
 
@@ -657,7 +654,7 @@ export async function listPromptsHandler() {
 export async function getPromptHandler(request: {
   params: { name: string; arguments?: Record<string, unknown> };
 }) {
-  const { name, arguments: args } = request.params;
+  const {name, arguments: args} = request.params;
   const prompt = CHROMA_PROMPTS.find((p) => p.name === name);
 
   if (!prompt) {
@@ -709,7 +706,7 @@ export async function getPromptHandler(request: {
     message += "\n```";
   } else if (prompt.name === "create-collection") {
     const collection = args?.collection_name || "<collection_name>";
-    const metadata = args?.metadata || { description: "My collection" };
+    const metadata = args?.metadata || {description: "My collection"};
 
     message += `To create a new collection named "${collection}":\n\n`;
     message += "1. Use the `chroma_create_collection` tool\n";
@@ -765,7 +762,7 @@ export async function listResourcesHandler() {
       mimeType: "application/json",
     });
 
-    return { resources };
+    return {resources};
   } catch (error) {
     console.error("Error listing resources:", error);
     throw error;
@@ -773,7 +770,7 @@ export async function listResourcesHandler() {
 }
 
 export async function readResourceHandler(request: { params: { uri: string } }) {
-  const { uri } = request.params;
+  const {uri} = request.params;
 
   if (uri === "chroma://collections") {
     // Return list of all collections
@@ -810,9 +807,9 @@ export async function readResourceHandler(request: { params: { uri: string } }) 
   const client = getChromaClient();
 
   try {
-    const collection = await client.getCollection({ name: collectionName });
+    const collection = await client.getCollection({name: collectionName});
     const count = await collection.count();
-    const peek = await collection.peek({ limit: 10 });
+    const peek = await collection.peek({limit: 10});
 
     return {
       contents: [
@@ -860,7 +857,7 @@ export function getCurrentLogLevel() {
 }
 
 export async function setLevelHandler(request: { params: { level: string } }) {
-  const { level } = request.params;
+  const {level} = request.params;
 
   const validLevels = [
     "debug",
@@ -910,7 +907,6 @@ export async function sendLogNotification(
   //       Blocked by: SDK limitation, not ChromaDB client issue
   for (const _server of activeServers) {
     try {
-      // lgtm[js/log-injection] - All user inputs sanitized by sanitizeLogValue
       console.log(
         `[${level.toUpperCase()}] ${sanitizeLogValue(
           logger || "chromadb-remote-mcp",
@@ -948,11 +944,11 @@ export const mcpLog = {
 export async function completeHandler(request: {
   params: { ref: { type: string; name?: string }; argument: { name: string; value: string } };
 }) {
-  const { argument } = request.params;
+  const {argument} = request.params;
 
   // Only provide completions for collection_name arguments
   if (argument.name !== "collection_name" && argument.name !== "name") {
-    return { completion: { values: [], total: 0, hasMore: false } };
+    return {completion: {values: [], total: 0, hasMore: false}};
   }
 
   try {
@@ -975,7 +971,7 @@ export async function completeHandler(request: {
     };
   } catch (error) {
     console.error("Error in completion:", error);
-    return { completion: { values: [], total: 0, hasMore: false } };
+    return {completion: {values: [], total: 0, hasMore: false}};
   }
 }
 
@@ -984,7 +980,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: "chroma-remote-mcp",
-      version: "1.0.1",
+      version: "1.0.2",
     },
     {
       capabilities: {
@@ -1344,7 +1340,7 @@ export function createAuthMiddleware(authToken?: string) {
           "WWW-Authenticate",
           'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
         );
-        return res.status(401).json({ error: "Unauthorized: Invalid token" });
+        return res.status(401).json({error: "Unauthorized: Invalid token"});
       }
 
       // Use constant-time comparison
@@ -1353,7 +1349,7 @@ export function createAuthMiddleware(authToken?: string) {
           "WWW-Authenticate",
           'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
         );
-        return res.status(401).json({ error: "Unauthorized: Invalid token" });
+        return res.status(401).json({error: "Unauthorized: Invalid token"});
       }
     } catch (_error) {
       // If any error occurs during comparison, deny access
@@ -1361,7 +1357,7 @@ export function createAuthMiddleware(authToken?: string) {
         "WWW-Authenticate",
         'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
       );
-      return res.status(401).json({ error: "Unauthorized: Invalid token" });
+      return res.status(401).json({error: "Unauthorized: Invalid token"});
     }
 
     // Token is valid
@@ -1387,7 +1383,7 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
   const sanitizedMethod = sanitizeLogValue(req.body?.method || "unknown");
 
   // Use MCP logging for request tracking
-  await mcpLog.info(`Received MCP request: ${sanitizedMethod}`, {
+  await mcpLog.info(`Received MCP request (incoming): '${sanitizedMethod}'`, {
     url: sanitizedUrl,
     method: sanitizedMethod,
   });
@@ -1416,7 +1412,7 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
     });
   } catch (error) {
     console.error("❌ MCP request error:", error);
-    await mcpLog.error("MCP request failed", { error: String(error) });
+    await mcpLog.error("MCP request failed", {error: String(error)});
 
     // Only send error response if headers haven't been sent yet
     // This prevents "res.writeHead is not a function" errors when
@@ -1582,7 +1578,7 @@ export async function main() {
     // Return server for graceful shutdown
     return app.listen(port, () => {
       console.log(`
-🚀 ChromaDB Remote MCP Server v1.0.1
+🚀 ChromaDB Remote MCP Server v1.0.2
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📡 Endpoints

@@ -1,36 +1,32 @@
 version = 1
 
 test_patterns = [
-    "**/__tests__/**",
-    "**/*.test.ts",
-    "**/*.spec.ts",
+  "**/__tests__/**",
+  "**/*.test.ts",
+  "**/*.spec.ts"
 ]
 
 exclude_patterns = [
-    "**/node_modules/**",
-    "**/build/**",
-    "**/dist/**",
-    "**/coverage/**",
-    "**/*.d.ts",
-    "**/yarn.lock",
-    "**/package-lock.json",
+  "**/node_modules/**",
+  "**/build/**",
+  "**/dist/**",
+  "**/coverage/**",
+  "**/*.d.ts",
+  "**/yarn.lock",
+  "**/package-lock.json"
 ]
 
 [[analyzers]]
 name = "secrets"
 
 [[analyzers]]
-name = "test-coverage"
-
-[[analyzers]]
 name = "javascript"
-dependency_file_paths = [
-    "package.json",
-    "yarn.lock"
-]
 
   [analyzers.meta]
-  environment = ["nodejs", "jest"]
+  environment = [
+    "nodejs",
+    "jest"
+  ]
 
 [[analyzers]]
 name = "shell"

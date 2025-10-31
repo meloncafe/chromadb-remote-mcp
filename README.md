@@ -3,6 +3,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![MseeP.ai](https://img.shields.io/badge/MseeP.ai-Audited-4c1)](https://mseep.ai/app/meloncafe-chromadb-remote-mcp)
 [![codecov](https://codecov.io/gh/meloncafe/chromadb-remote-mcp/graph/badge.svg?token=0abUQsve4y)](https://codecov.io/gh/meloncafe/chromadb-remote-mcp)
 [![DeepSource](https://app.deepsource.com/gh/meloncafe/chromadb-remote-mcp.svg/?label=Active+Issues&show_trend=true&token=Mzfb6tMnlzBIxaJO9CsYO3e8)](https://app.deepsource.com/gh/meloncafe/chromadb-remote-mcp/)
 
@@ -698,6 +699,41 @@ docker compose restart
 3. Confirm transport type is `streamableHttp` (not `sse`)
 4. Check authentication token if enabled
 5. For Custom Connector: Ensure Tailscale Funnel is active
+
+### TLS Handshake Timeout on Local Network
+
+If you're connecting from the same local network as the server and using Tailscale Funnel HTTPS:
+
+**Problem**: TLS handshake fails with timeout when accessing `https://your-server.ts.net` from the same network.
+
+**Root cause**: Tailscale Funnel has issues with TLS termination when clients on the same LAN try to connect via the public Funnel domain.
+
+**Solution**: Use direct local network connection instead of Tailscale HTTPS:
+
+```bash
+# Remove existing configuration
+claude mcp remove chromadb
+
+# Add with local IP address
+claude mcp add chromadb --transport http \
+  http://192.168.x.x:8080/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
+
+# Or use hostname if DNS resolves
+claude mcp add chromadb --transport http \
+  http://server-hostname:8080/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Verification**:
+```bash
+# Test local network connection
+curl http://192.168.x.x:8080/health
+
+# Should return: {"status":"ok","service":"chroma-remote-mcp",...}
+```
+
+**Note**: External clients should continue using Tailscale Funnel HTTPS. This issue only affects clients on the same LAN as the server.
 
 ### Authentication Errors (401)
 
