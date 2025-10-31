@@ -1167,14 +1167,14 @@
     "@types/range-parser" "*"
     "@types/send" "*"
 
-"@types/express@^5.0.4":
-  version "5.0.4"
-  resolved "https://registry.yarnpkg.com/@types/express/-/express-5.0.4.tgz#975e7fc1097066a83b992fd2bb8a4819622e8bae"
-  integrity sha512-g64dbryHk7loCIrsa0R3shBnEu5p6LPJ09bu9NG58+jz+cRUjFrc3Bz0kNQ7j9bXeCsrRDvNET1G54P/GJkAyA==
+"@types/express@^5.0.5":
+  version "5.0.5"
+  resolved "https://registry.yarnpkg.com/@types/express/-/express-5.0.5.tgz#3ba069177caa34ab96585ca23b3984d752300cdc"
+  integrity sha512-LuIQOcb6UmnF7C1PCFmEU1u2hmiHL43fgFQX67sN3H4Z+0Yk0Neo++mFsBjhOAuLzvlQeqAAkeDOZrJs9rzumQ==
   dependencies:
     "@types/body-parser" "*"
     "@types/express-serve-static-core" "^5.0.0"
-    "@types/serve-static" "*"
+    "@types/serve-static" "^1"
 
 "@types/http-errors@*":
   version "2.0.5"
@@ -1225,10 +1225,17 @@
   resolved "https://registry.yarnpkg.com/@types/mime/-/mime-1.3.5.tgz#1ef302e01cf7d2b5a0fa526790c9123bf1d06690"
   integrity sha512-/pyBZWSLD2n0dcHE3hq8s8ZvcETHtEuF+3E7XVt0Ig2nvsVQXdghHVcEkIWjy9A0wKfTn97a/PSDYohKIlnP/w==
 
-"@types/node@*", "@types/node@>=13.7.0", "@types/node@^24.9.1":
+"@types/node@*", "@types/node@>=13.7.0":
   version "24.9.1"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-24.9.1.tgz#b7360b3c789089e57e192695a855aa4f6981a53c"
   integrity sha512-QoiaXANRkSXK6p0Duvt56W208du4P9Uye9hWLWgGMDTEoKPhuenzNcC4vGUmrNkiOKTlIrBoyNQYNpSwfEZXSg==
+  dependencies:
+    undici-types "~7.16.0"
+
+"@types/node@^24.9.2":
+  version "24.9.2"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-24.9.2.tgz#90ded2422dbfcafcf72080f28975adc21366148d"
+  integrity sha512-uWN8YqxXxqFMX2RqGOrumsKeti4LlmIMIyV0lgut4jx7KQBcBiW6vkDtIBvHnHIquwNfJhk8v2OtmO8zXWHfPA==
   dependencies:
     undici-types "~7.16.0"
 
@@ -1257,10 +1264,10 @@
     "@types/mime" "^1"
     "@types/node" "*"
 
-"@types/serve-static@*":
-  version "1.15.9"
-  resolved "https://registry.yarnpkg.com/@types/serve-static/-/serve-static-1.15.9.tgz#f9b08ab7dd8bbb076f06f5f983b683654fe0a025"
-  integrity sha512-dOTIuqpWLyl3BBXU3maNQsS4A3zuuoYRNIvYSxxhebPfXg2mzWQEPne/nlJ37yOse6uGgR386uTpdsx4D0QZWA==
+"@types/serve-static@^1":
+  version "1.15.10"
+  resolved "https://registry.yarnpkg.com/@types/serve-static/-/serve-static-1.15.10.tgz#768169145a778f8f5dfcb6360aead414a3994fee"
+  integrity sha512-tRs1dB+g8Itk72rlSI2ZrW6vZg0YrLI81iQSTkMmOqnqCaNr/8Ek4VwWcN5vZgCYWbg/JJSGBlUaYGAOP73qBw==
   dependencies:
     "@types/http-errors" "*"
     "@types/node" "*"
@@ -1776,43 +1783,43 @@ chownr@^3.0.0:
   resolved "https://registry.yarnpkg.com/chownr/-/chownr-3.0.0.tgz#9855e64ecd240a9cc4267ce8a4aa5d24a1da15e4"
   integrity sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==
 
-chromadb-js-bindings-darwin-arm64@^1.0.8:
-  version "1.0.8"
-  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-darwin-arm64/-/chromadb-js-bindings-darwin-arm64-1.0.8.tgz#dde92709a695f6629e258a1fcb93737c4a04457a"
-  integrity sha512-QPKG6Q76y0kEsSueZB1s6M/bk0OUGjojG4LQIa5T2zUgHHKplWRpQCUk1ziMTYzUt2AP9MynBYvh8/BoLefZAg==
+chromadb-js-bindings-darwin-arm64@^1.0.9:
+  version "1.0.9"
+  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-darwin-arm64/-/chromadb-js-bindings-darwin-arm64-1.0.9.tgz#7a2b0775a9b476e6d1d674831c97a42581ea051d"
+  integrity sha512-xZ7pOYVp1RCOJe80cQEWoBFdGi42wpTsBpevD9eyQMkp2FXXgK8u+0DG8bERs08Iac573XeB5TPoSYZgo5M2uA==
 
-chromadb-js-bindings-darwin-x64@^1.0.8:
-  version "1.0.8"
-  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-darwin-x64/-/chromadb-js-bindings-darwin-x64-1.0.8.tgz#46d42d1bf732aa60c83f68a246278dd045aca6a8"
-  integrity sha512-yBdnL7MUbR8sm4JkLYtvHuCT3Bb12xn+c0UAefJUVhn8qvud7nLAAfOKY8b911NpfpYAOPABqm8PUXhZMAD8fg==
+chromadb-js-bindings-darwin-x64@^1.0.9:
+  version "1.0.9"
+  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-darwin-x64/-/chromadb-js-bindings-darwin-x64-1.0.9.tgz#b3988911f1c384375ec98237a460180db4de8cee"
+  integrity sha512-c9VvY9hJqmYzUitBBrLBEArk1JZAbj1YWaPe7RrGpzYhya7z6HVC+klNSihkyQkZEZWBMOBfQJAwDdFsgrp1ZQ==
 
-chromadb-js-bindings-linux-arm64-gnu@^1.0.8:
-  version "1.0.8"
-  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-linux-arm64-gnu/-/chromadb-js-bindings-linux-arm64-gnu-1.0.8.tgz#ee41acc3a398f7a46450419595967c46630e7550"
-  integrity sha512-KYPeETSAGAcGSQVur5OEe0svmEmrStwXJfNOBNPwclCnKmLs8QKlMh2Jxwq6ymWjWfZggNIy8NYpgBnMcWqOtA==
+chromadb-js-bindings-linux-arm64-gnu@^1.0.9:
+  version "1.0.9"
+  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-linux-arm64-gnu/-/chromadb-js-bindings-linux-arm64-gnu-1.0.9.tgz#d98db2b53aa429543681932f7490d018a1ea59a2"
+  integrity sha512-dScn0WQSDWBAmXxYgCI09bEsmwu8EgSSChAz7hLicVaddLb7oeAH2Zx/IzJJZbtdSQV2niPi1S6TEPKYv1pe2Q==
 
-chromadb-js-bindings-linux-x64-gnu@^1.0.8:
-  version "1.0.8"
-  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-linux-x64-gnu/-/chromadb-js-bindings-linux-x64-gnu-1.0.8.tgz#5c716f74a9f398a6b3ea7ce3cf16afa5a47d06d9"
-  integrity sha512-XPNB64rulyR/qpw/VXeKETvCWtTMOBAV2mCRdRD8XGIWEcgUaYnVnCeWep2r1G2UT6B9yJxSmDIgsOxKWzNKVA==
+chromadb-js-bindings-linux-x64-gnu@^1.0.9:
+  version "1.0.9"
+  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-linux-x64-gnu/-/chromadb-js-bindings-linux-x64-gnu-1.0.9.tgz#94260cf20eaafb666e43d855ccc696b96134c697"
+  integrity sha512-NMbwaUFx8HTB+pLLl+QNVUzZUpmaf2EcamChEtK+YnU83qEoiBKOsiaRHUkf8yEan5XXBnvK333zWh80aWOHYg==
 
-chromadb-js-bindings-win32-x64-msvc@^1.0.8:
-  version "1.0.8"
-  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-win32-x64-msvc/-/chromadb-js-bindings-win32-x64-msvc-1.0.8.tgz#610805957ae2cb86381dc47f0b98a94de77b38fa"
-  integrity sha512-8m/YYe0AQos+pEU171+wefNtOLw7YZjhhEzruqz7O34SPU48oRM9+T2CefKWBkFTBcYPQGpTOorclq0nFteCvQ==
+chromadb-js-bindings-win32-x64-msvc@^1.0.9:
+  version "1.0.9"
+  resolved "https://registry.yarnpkg.com/chromadb-js-bindings-win32-x64-msvc/-/chromadb-js-bindings-win32-x64-msvc-1.0.9.tgz#7194bcb515797f4b7e1138b7ea60af255b5badbe"
+  integrity sha512-CdNWGeXtY33Q2rzwJ5rUO65UHT3/qxY70IwAXftlW+BMI0s2vOvk6odgpUIU26hE6qhp+ajP5iPSDEtBFu40NQ==
 
-chromadb@^3.0.17:
-  version "3.0.17"
-  resolved "https://registry.yarnpkg.com/chromadb/-/chromadb-3.0.17.tgz#3dccbe5174e6ca08b3086efcc0dbc4fb531e9b74"
-  integrity sha512-QDruPC+SawO2OECPK0vs+tGB+Rl+I3BO+R7AVKCC1O4SJUtEUgHpM/u+c/PrlaIgA4n9zoE/5ryZ/XKU8HPR4w==
+chromadb@^3.1.0:
+  version "3.1.0"
+  resolved "https://registry.yarnpkg.com/chromadb/-/chromadb-3.1.0.tgz#892b8ba57c967090d1306bde05dfec677f3004ad"
+  integrity sha512-j4ZztxGNVNXON84pBLdt7x4DgEjqgd23/GnO/MyzFb5BzFULRTpd8GEfTvyERuUYlYIygoyVs3f0BOxBSHguEA==
   dependencies:
     semver "^7.7.1"
   optionalDependencies:
-    chromadb-js-bindings-darwin-arm64 "^1.0.8"
-    chromadb-js-bindings-darwin-x64 "^1.0.8"
-    chromadb-js-bindings-linux-arm64-gnu "^1.0.8"
-    chromadb-js-bindings-linux-x64-gnu "^1.0.8"
-    chromadb-js-bindings-win32-x64-msvc "^1.0.8"
+    chromadb-js-bindings-darwin-arm64 "^1.0.9"
+    chromadb-js-bindings-darwin-x64 "^1.0.9"
+    chromadb-js-bindings-linux-arm64-gnu "^1.0.9"
+    chromadb-js-bindings-linux-x64-gnu "^1.0.9"
+    chromadb-js-bindings-win32-x64-msvc "^1.0.9"
 
 ci-info@^4.2.0:
   version "4.3.1"
@@ -2249,10 +2256,10 @@ express-rate-limit@^7.5.0:
   resolved "https://registry.yarnpkg.com/express-rate-limit/-/express-rate-limit-7.5.1.tgz#8c3a42f69209a3a1c969890070ece9e20a879dec"
   integrity sha512-7iN8iPMDzOMHPUYllBEsQdWVB6fPDMPqwjBaFrgr4Jgr/+okjvzAy+UHlYYL/Vs0OsOrMkwS6PJDkFlJwoxUnw==
 
-express-rate-limit@^8.1.0:
-  version "8.1.0"
-  resolved "https://registry.yarnpkg.com/express-rate-limit/-/express-rate-limit-8.1.0.tgz#b956708999347e4d87146f8c3e6dd954fde7718b"
-  integrity sha512-4nLnATuKupnmwqiJc27b4dCFmB/T60ExgmtDD7waf4LdrbJ8CPZzZRHYErDYNhoz+ql8fUdYwM/opf90PoPAQA==
+express-rate-limit@^8.2.0:
+  version "8.2.0"
+  resolved "https://registry.yarnpkg.com/express-rate-limit/-/express-rate-limit-8.2.0.tgz#3416dc0dbb136d6096d0ed3358687493a8cbf24d"
+  integrity sha512-zDLb8RsXoA09dui1mvm/bAqSYeUh/bj3+fcDeiNBebSbSjl9IEK5mbCSYSRk52Lrco9sj9Xjuzkot3TXuXEw0A==
   dependencies:
     ip-address "10.0.1"
 
