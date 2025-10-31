@@ -428,7 +428,7 @@ export function sanitizeLogValue(value: unknown, maxLength = 200): string {
 
   // Remove all control characters including newlines
   const sanitized = filterControlCharacters(str);
-
+  
   // Truncate and add ellipsis if needed
   if (sanitized.length > maxLength) {
     return `${sanitized.slice(0, maxLength)}...`;
