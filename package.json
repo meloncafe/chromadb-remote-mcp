@@ -48,7 +48,7 @@
     "chromadb": "^3.1.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "express-rate-limit": "^8.2.0",
+    "express-rate-limit": "^8.2.1",
     "http-proxy-middleware": "^3.0.5"
   },
   "devDependencies": {
@@ -61,7 +61,7 @@
     "ts-jest": "^29.4.5",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "eslint": "^9.38.0",
+    "eslint": "^9.39.0",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
     "prettier": "^3.6.2"
