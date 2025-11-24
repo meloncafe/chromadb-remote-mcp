@@ -1821,10 +1821,10 @@ chromadb-js-bindings-win32-x64-msvc@^1.1.1:
   resolved "https://registry.yarnpkg.com/chromadb-js-bindings-win32-x64-msvc/-/chromadb-js-bindings-win32-x64-msvc-1.1.1.tgz#6e1a99d964aa9ae1c6275dbf48342ce8bf68c3c2"
   integrity sha512-296SxWNwsmvP+1Ggkl72norTFLOivoXhGu0t5mXNIbd7yd2UodntvAvG2cheTHDCL/ILbox4u+6KHNvRxHgm6A==
 
-chromadb@^3.1.5:
-  version "3.1.5"
-  resolved "https://registry.yarnpkg.com/chromadb/-/chromadb-3.1.5.tgz#e804dc7e68be653572dd7655b74fbb44929c7fab"
-  integrity sha512-RQwXThjJXB0JPOfaVYSG7o9LIVZs5ds7h4vOmrpeLQ1C87y25PEJAtOgcAtTU7ObI5Yq2l1lx/Wng3vVyRtV4A==
+chromadb@^3.1.6:
+  version "3.1.6"
+  resolved "https://registry.yarnpkg.com/chromadb/-/chromadb-3.1.6.tgz#a3c71077b6556010fe904848813045a3b2038425"
+  integrity sha512-aY/9NqczQHrXOIjxVbjsOhdeW+kxQjzMP+VtK4OZh7pKeYYcdo3AbalHwl3FbQHTc0HSbh30T44yql8CwcGCvQ==
   dependencies:
     semver "^7.7.1"
   optionalDependencies:
