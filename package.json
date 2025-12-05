@@ -44,7 +44,7 @@
   "homepage": "https://github.com/meloncafe/chromadb-remote-mcp#readme",
   "dependencies": {
     "@chroma-core/default-embed": "^0.1.9",
-    "@modelcontextprotocol/sdk": "^1.24.2",
+    "@modelcontextprotocol/sdk": "^1.24.3",
     "chromadb": "^3.1.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
