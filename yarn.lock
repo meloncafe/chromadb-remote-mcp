@@ -1220,10 +1220,10 @@
   dependencies:
     undici-types "~7.16.0"
 
-"@types/node@^24.10.2":
-  version "24.10.2"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-24.10.2.tgz#82a57476a19647d8f2c7750d0924788245e39b26"
-  integrity sha512-WOhQTZ4G8xZ1tjJTvKOpyEVSGgOTvJAfDK3FNFgELyaTpzhdgHVHeqW8V+UJvzF5BT+/B54T/1S2K6gd9c7bbA==
+"@types/node@^24.10.3":
+  version "24.10.3"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-24.10.3.tgz#e0bde7b6bfa2342e88bf158d177dc110e608520e"
+  integrity sha512-gqkrWUsS8hcm0r44yn7/xZeV1ERva/nLgrLxFRUGb7aoNMIJfZJ3AC261zDQuOAKC7MiXai1WCpYc48jAHoShQ==
   dependencies:
     undici-types "~7.16.0"
 
@@ -1792,10 +1792,10 @@ chromadb-js-bindings-win32-x64-msvc@^1.1.1:
   resolved "https://registry.yarnpkg.com/chromadb-js-bindings-win32-x64-msvc/-/chromadb-js-bindings-win32-x64-msvc-1.1.1.tgz#6e1a99d964aa9ae1c6275dbf48342ce8bf68c3c2"
   integrity sha512-296SxWNwsmvP+1Ggkl72norTFLOivoXhGu0t5mXNIbd7yd2UodntvAvG2cheTHDCL/ILbox4u+6KHNvRxHgm6A==
 
-chromadb@^3.1.6:
-  version "3.1.6"
-  resolved "https://registry.yarnpkg.com/chromadb/-/chromadb-3.1.6.tgz#a3c71077b6556010fe904848813045a3b2038425"
-  integrity sha512-aY/9NqczQHrXOIjxVbjsOhdeW+kxQjzMP+VtK4OZh7pKeYYcdo3AbalHwl3FbQHTc0HSbh30T44yql8CwcGCvQ==
+chromadb@^3.1.7:
+  version "3.1.7"
+  resolved "https://registry.yarnpkg.com/chromadb/-/chromadb-3.1.7.tgz#21a5aaa36c4d0270b5cd8c09edf47a2c44d0702d"
+  integrity sha512-auEmkrm/dDc5VEMdqCoLfn87KVpzqU6VmUbvugE6P+q0bh4b2q2BIvBaA7qFMNObPY03VEBYvioQaevry66V4g==
   dependencies:
     semver "^7.7.1"
   optionalDependencies:
