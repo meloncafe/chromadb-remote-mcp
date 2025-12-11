@@ -1,4 +1,4 @@
-FROM node:24.11.1-slim AS builder
+FROM node:24.12.0-slim AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY src ./src
 RUN yarn build
 
 # Production stage
-FROM node:24.11.1-slim
+FROM node:24.12.0-slim
 
 # MCP Register Label
 LABEL io.modelcontextprotocol.server.name="io.github.meloncafe/chromadb-remote-mcp"
