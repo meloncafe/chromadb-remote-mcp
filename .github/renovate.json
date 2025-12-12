@@ -28,8 +28,8 @@
   "vulnerabilityAlerts": {
     "enabled": true
   },
-  "osvVulnerabilityAlerts": true,
+  "osvVulnerabilityAlerts": false,
   "lockFileMaintenance": {
-    "enabled": true
+    "enabled": false
   }
 }
