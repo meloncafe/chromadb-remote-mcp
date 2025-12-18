@@ -1353,9 +1353,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@modelcontextprotocol/sdk@npm:^1.25.0":
-  version: 1.25.0
-  resolution: "@modelcontextprotocol/sdk@npm:1.25.0"
+"@modelcontextprotocol/sdk@npm:^1.25.1":
+  version: 1.25.1
+  resolution: "@modelcontextprotocol/sdk@npm:1.25.1"
   dependencies:
     "@hono/node-server": "npm:^1.19.7"
     ajv: "npm:^8.17.1"
@@ -1381,7 +1381,7 @@ __metadata:
       optional: true
     zod:
       optional: false
-  checksum: 10c0/70c6b1654464957af3cd3b3ec71a526e8dcd114d609c5a987673c0844d27fd439be6fbbcfe6d16f22d6c4e1fe5354937ba9549d7fe05f80fcabcdae20c252b46
+  checksum: 10c0/bca74e841b5c2c534a3c20a760cc1508f0b20dab8d2b37bcb01944fac875704b40de8bf17f2865fb5d22684b261a5472ab339d80736e651639cd44d8edaa83d5
   languageName: node
   linkType: hard
 
@@ -2478,7 +2478,7 @@ __metadata:
   dependencies:
     "@chroma-core/default-embed": "npm:^0.1.9"
     "@jest/globals": "npm:^30.2.0"
-    "@modelcontextprotocol/sdk": "npm:^1.25.0"
+    "@modelcontextprotocol/sdk": "npm:^1.25.1"
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^24.10.4"
