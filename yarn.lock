@@ -2484,7 +2484,7 @@ __metadata:
     "@types/node": "npm:^24.10.4"
     "@typescript-eslint/eslint-plugin": "npm:^8.50.1"
     "@typescript-eslint/parser": "npm:^8.50.1"
-    chromadb: "npm:^3.1.8"
+    chromadb: "npm:^3.2.0"
     dotenv: "npm:^17.2.3"
     eslint: "npm:^9.39.2"
     express: "npm:^5.2.1"
@@ -2499,50 +2499,50 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"chromadb-js-bindings-darwin-arm64@npm:^1.1.4":
-  version: 1.1.4
-  resolution: "chromadb-js-bindings-darwin-arm64@npm:1.1.4"
+"chromadb-js-bindings-darwin-arm64@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "chromadb-js-bindings-darwin-arm64@npm:1.2.0"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-darwin-x64@npm:^1.1.4":
-  version: 1.1.4
-  resolution: "chromadb-js-bindings-darwin-x64@npm:1.1.4"
+"chromadb-js-bindings-darwin-x64@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "chromadb-js-bindings-darwin-x64@npm:1.2.0"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-linux-arm64-gnu@npm:^1.1.4":
-  version: 1.1.4
-  resolution: "chromadb-js-bindings-linux-arm64-gnu@npm:1.1.4"
+"chromadb-js-bindings-linux-arm64-gnu@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "chromadb-js-bindings-linux-arm64-gnu@npm:1.2.0"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-linux-x64-gnu@npm:^1.1.4":
-  version: 1.1.4
-  resolution: "chromadb-js-bindings-linux-x64-gnu@npm:1.1.4"
+"chromadb-js-bindings-linux-x64-gnu@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "chromadb-js-bindings-linux-x64-gnu@npm:1.2.0"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-win32-x64-msvc@npm:^1.1.4":
-  version: 1.1.4
-  resolution: "chromadb-js-bindings-win32-x64-msvc@npm:1.1.4"
+"chromadb-js-bindings-win32-x64-msvc@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "chromadb-js-bindings-win32-x64-msvc@npm:1.2.0"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"chromadb@npm:^3.1.8":
-  version: 3.1.8
-  resolution: "chromadb@npm:3.1.8"
+"chromadb@npm:^3.2.0":
+  version: 3.2.0
+  resolution: "chromadb@npm:3.2.0"
   dependencies:
-    chromadb-js-bindings-darwin-arm64: "npm:^1.1.4"
-    chromadb-js-bindings-darwin-x64: "npm:^1.1.4"
-    chromadb-js-bindings-linux-arm64-gnu: "npm:^1.1.4"
-    chromadb-js-bindings-linux-x64-gnu: "npm:^1.1.4"
-    chromadb-js-bindings-win32-x64-msvc: "npm:^1.1.4"
+    chromadb-js-bindings-darwin-arm64: "npm:^1.2.0"
+    chromadb-js-bindings-darwin-x64: "npm:^1.2.0"
+    chromadb-js-bindings-linux-arm64-gnu: "npm:^1.2.0"
+    chromadb-js-bindings-linux-x64-gnu: "npm:^1.2.0"
+    chromadb-js-bindings-win32-x64-msvc: "npm:^1.2.0"
     semver: "npm:^7.7.1"
   dependenciesMeta:
     chromadb-js-bindings-darwin-arm64:
@@ -2557,7 +2557,7 @@ __metadata:
       optional: true
   bin:
     chroma: dist/cli.mjs
-  checksum: 10c0/15c38dec6675b9f2060733180d8c06601889b073764f59bf1d97b78a95a6842e6978ddd43237aae7fb7701e7831fdf2b0de268f1fbfbc3ed719727c8bbdd5b7f
+  checksum: 10c0/b3ebac2480e3536c1a856681ee07ca19203ce6e92a8f15ec23521271367f81d1e43f19060772c2550fa89e9a1c31b967de69ebc5aa11e39ee8aaeece5cd10b3e
   languageName: node
   linkType: hard
 
