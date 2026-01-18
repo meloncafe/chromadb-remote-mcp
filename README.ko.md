@@ -17,8 +17,11 @@
 
 ## Sponsors
 
-<img src="assets/termius-logo.svg" alt="Termius Logo" id="gh-light-mode-only" width="200" />
-<img src="assets/termius-logo.svg" alt="Termius Logo" style="filter: invert(1)" id="gh-dark-mode-only" width="200" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/termius-logo-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/termius-logo-light.svg" />
+  <img alt="Termius Logo" src="assets/termius-logo-light.svg" width="200" />
+</picture>
 
 Termius는 안전하고 신뢰할 수 있으며 협업이 가능한 SSH 클라이언트를 제공합니다.
 

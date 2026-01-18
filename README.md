@@ -13,12 +13,15 @@ A **Streamable HTTP** MCP (Model Context Protocol) server that provides remote a
 
 [한국어 문서](README.ko.md)
 
---
+---
 
 ## Sponsors
 
-<img src="assets/termius-logo.svg" alt="Termius Logo" width="200" />
-<img src="assets/termius-logo.svg" alt="Termius Logo" style="filter: invert(1)" id="gh-dark-mode-only" width="200" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/termius-logo-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/termius-logo-light.svg" />
+  <img alt="Termius Logo" src="assets/termius-logo-light.svg" width="200" />
+</picture>
 
 Termius provides a secure, reliable, and collaborative SSH client.
 
