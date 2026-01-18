@@ -13,6 +13,15 @@ A **Streamable HTTP** MCP (Model Context Protocol) server that provides remote a
 
 [한국어 문서](README.ko.md)
 
+--
+
+## Sponsors
+
+<img src="assets/termius-logo.svg" alt="Termius Logo" width="200" />
+<img src="assets/termius-logo.svg" alt="Termius Logo" style="filter: invert(1)" id="gh-dark-mode-only" width="200" />
+
+Termius provides a secure, reliable, and collaborative SSH client.
+
 ---
 
 ## Cross-Platform AI Memory Server

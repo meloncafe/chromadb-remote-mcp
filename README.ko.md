@@ -15,6 +15,15 @@
 
 ---
 
+## Sponsors
+
+<img src="assets/termius-logo.svg" alt="Termius Logo" id="gh-light-mode-only" width="200" />
+<img src="assets/termius-logo.svg" alt="Termius Logo" style="filter: invert(1)" id="gh-dark-mode-only" width="200" />
+
+Termius는 안전하고 신뢰할 수 있으며 협업이 가능한 SSH 클라이언트를 제공합니다.
+
+---
+
 ## 다중 플랫폼 AI 메모리 서버
 
 **다양한 AI 플랫폼 서비스를 지원합니다.:**
