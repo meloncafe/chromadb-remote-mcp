@@ -13,7 +13,7 @@ permissions:
 jobs:
   coverage:
     name: Test Coverage
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64, oci]
 
     steps:
       - name: Checkout repository
