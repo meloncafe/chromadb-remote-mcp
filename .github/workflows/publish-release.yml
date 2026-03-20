@@ -67,7 +67,7 @@ jobs:
   # ============================================
   docker-publish:
     name: Docker Build & Push
-    runs-on: [self-hosted, Linux, ARM64, oci]
+    runs-on: [self-hosted, Linux, X64]
     needs: quality-gates
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
