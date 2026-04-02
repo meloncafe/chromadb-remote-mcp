@@ -44,11 +44,11 @@
   "homepage": "https://github.com/meloncafe/chromadb-remote-mcp#readme",
   "dependencies": {
     "@chroma-core/default-embed": "^0.1.9",
-    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "chromadb": "^3.4.0",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.0",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.3.1",
+    "express-rate-limit": "^8.3.2",
     "http-proxy-middleware": "^3.0.5"
   },
   "devDependencies": {
@@ -56,13 +56,13 @@
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.5.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.2",
-    "@typescript-eslint/parser": "^8.57.2",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
     "eslint": "^10.1.0",
     "jest": "^30.3.0",
     "jest-junit": "^16.0.0",
     "prettier": "^3.8.1",
-    "ts-jest": "^29.4.6",
+    "ts-jest": "^29.4.9",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   },
