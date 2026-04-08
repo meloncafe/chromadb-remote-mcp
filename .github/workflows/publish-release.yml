@@ -25,7 +25,7 @@ jobs:
   # ============================================
   quality-gates:
     name: Quality Gates
-    runs-on: [self-hosted, Linux, ARM64, oci]
+    runs-on: [self-hosted, Linux, X64, hetzner]
 
     steps:
       - name: Checkout repository
@@ -178,7 +178,7 @@ jobs:
   # ============================================
   release-summary:
     name: Release Summary
-    runs-on: [self-hosted, Linux, ARM64, oci]
+    runs-on: [self-hosted, Linux, X64, hetzner]
     needs: docker-publish
     if: always()
 
