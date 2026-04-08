@@ -3,6 +3,7 @@
   "version": "1.0.2",
   "description": "ChromaDB Remote MCP Server with Streamable HTTP Transport",
   "type": "module",
+  "packageManager": "yarn@4.13.0",
   "main": "build/index.js",
   "mcpName": "io.github.meloncafe/chromadb-remote-mcp",
   "private": true,
@@ -69,6 +70,5 @@
   "engines": {
     "node": ">=24.14.1",
     "yarn": ">=4.13.0"
-  },
-  "packageManager": "yarn@4.13.0"
+  }
 }
