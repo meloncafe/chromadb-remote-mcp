@@ -13,7 +13,7 @@ permissions:
 jobs:
   coverage:
     name: Test Coverage
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
 
     steps:
       - name: Checkout repository

@@ -25,7 +25,7 @@ jobs:
   # ============================================
   quality-gates:
     name: Quality Gates
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
 
     steps:
       - name: Checkout repository
@@ -67,7 +67,7 @@ jobs:
   # ============================================
   docker-publish:
     name: Docker Build & Push
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     needs: quality-gates
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
@@ -178,7 +178,7 @@ jobs:
   # ============================================
   release-summary:
     name: Release Summary
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     needs: docker-publish
     if: always()
 

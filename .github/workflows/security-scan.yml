@@ -15,7 +15,7 @@ permissions:
 jobs:
   dependency-audit:
     name: Dependency Audit
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -51,7 +51,7 @@ jobs:
 
   codeql-analysis:
     name: CodeQL Analysis
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     permissions:
       actions: read
       contents: read
@@ -83,7 +83,7 @@ jobs:
 
   secret-scan:
     name: Secret Scanning
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -97,7 +97,7 @@ jobs:
 
   typescript-check:
     name: TypeScript Type Check
-    runs-on: [self-hosted, Linux, X64, hetzner]
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
