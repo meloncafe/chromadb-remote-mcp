@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 8
+  version: 9
   cacheKey: 10c0
 
 "@babel/code-frame@npm:^7.0.0, @babel/code-frame@npm:^7.27.1, @babel/code-frame@npm:^7.28.6, @babel/code-frame@npm:^7.29.0":
@@ -2490,7 +2490,7 @@ __metadata:
     dotenv: "npm:^17.4.2"
     eslint: "npm:^10.2.1"
     express: "npm:^5.2.1"
-    express-rate-limit: "npm:^8.3.2"
+    express-rate-limit: "npm:^8.4.1"
     http-proxy-middleware: "npm:^3.0.5"
     jest: "npm:^30.3.0"
     jest-junit: "npm:^16.0.0"
@@ -3198,7 +3198,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"express-rate-limit@npm:^8.2.1, express-rate-limit@npm:^8.3.2":
+"express-rate-limit@npm:^8.2.1":
   version: 8.3.2
   resolution: "express-rate-limit@npm:8.3.2"
   dependencies:
@@ -3206,6 +3206,17 @@ __metadata:
   peerDependencies:
     express: ">= 4.11"
   checksum: 10c0/5b64d0691071086cdb8cfc6bcd5e761f5687cf4fabdebfe2a043ea5b4d31443637181e7be71e7ffabce76aee816daee62c1ca83250045847957da408a129f650
+  languageName: node
+  linkType: hard
+
+"express-rate-limit@npm:^8.4.1":
+  version: 8.4.1
+  resolution: "express-rate-limit@npm:8.4.1"
+  dependencies:
+    ip-address: "npm:10.1.0"
+  peerDependencies:
+    express: ">= 4.11"
+  checksum: 10c0/ead87bcf7b9b4094d2a597b6a77569eed34c7d2ff3a449eeef25e1cd4a96dc3de17b8da93e8cf82f757ef441974846138b4bc371621fbc72346f8cc4a07a712b
   languageName: node
   linkType: hard
 
