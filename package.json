@@ -49,18 +49,18 @@
     "chromadb": "^3.4.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.5.0",
-    "http-proxy-middleware": "^3.0.5"
+    "express-rate-limit": "^8.5.1",
+    "http-proxy-middleware": "^4.0.0"
   },
   "devDependencies": {
-    "@jest/globals": "^30.3.0",
+    "@jest/globals": "^30.4.0",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.6.2",
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.2",
     "eslint": "^10.3.0",
-    "jest": "^30.3.0",
+    "jest": "^30.4.0",
     "jest-junit": "^17.0.0",
     "prettier": "^3.8.3",
     "ts-jest": "^29.4.9",
