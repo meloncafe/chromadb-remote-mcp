@@ -240,11 +240,11 @@ describe("ChromaDB Tools", () => {
           Promise.resolve([mockCollection]),
         ),
         createCollection: jest.fn<() => Promise<Collection>>(() => Promise.resolve(mockCollection)),
-        getOrCreateCollection: jest.fn<() => Promise<Collection>>(() =>
+        getCollection: jest.fn<() => Promise<Collection>>(() =>
           Promise.resolve(mockCollection),
         ),
         deleteCollection: jest.fn<() => Promise<void>>(() => Promise.resolve(undefined)),
-        getCollection: jest.fn(),
+        getOrCreateCollection: jest.fn(),
         heartbeat: jest.fn(),
         version: jest.fn(),
         reset: jest.fn(),
@@ -462,7 +462,7 @@ describe("ChromaDB Tools", () => {
         });
 
         it("should sanitize not found errors in production", async () => {
-          mockClient.getOrCreateCollection.mockRejectedValue(new Error("Collection not found"));
+          mockClient.getCollection.mockRejectedValue(new Error("Collection not found"));
 
           const result = await handleChromaTool(mockClient, "chroma_peek_collection", {
             collection_name: "test",
@@ -472,7 +472,7 @@ describe("ChromaDB Tools", () => {
         });
 
         it("should sanitize does not exist errors in production", async () => {
-          mockClient.getOrCreateCollection.mockRejectedValue(new Error("Document does not exist"));
+          mockClient.getCollection.mockRejectedValue(new Error("Document does not exist"));
 
           const result = await handleChromaTool(mockClient, "chroma_peek_collection", {
             collection_name: "test",
@@ -521,7 +521,7 @@ describe("ChromaDB Tools", () => {
         });
 
         it("should sanitize collection errors in production", async () => {
-          mockClient.getOrCreateCollection.mockRejectedValue(new Error("Collection query failed"));
+          mockClient.getCollection.mockRejectedValue(new Error("Collection query failed"));
 
           const result = await handleChromaTool(mockClient, "chroma_peek_collection", {
             collection_name: "test",
@@ -635,7 +635,7 @@ describe("ChromaDB Tools", () => {
       it("returns error content when collection metadata is legacy v1", async () => {
         const { handleChromaTool } = await import("../../src/chroma-tools.js");
         const fakeClient = {
-          getOrCreateCollection: jest.fn<() => Promise<unknown>>().mockResolvedValue({
+          getCollection: jest.fn<() => Promise<unknown>>().mockResolvedValue({
             metadata: null,
             count: jest.fn<() => Promise<number>>().mockResolvedValue(0),
           }),
@@ -653,7 +653,7 @@ describe("ChromaDB Tools", () => {
       it("returns error content when collection provider differs", async () => {
         const { handleChromaTool } = await import("../../src/chroma-tools.js");
         const fakeClient = {
-          getOrCreateCollection: jest.fn<() => Promise<unknown>>().mockResolvedValue({
+          getCollection: jest.fn<() => Promise<unknown>>().mockResolvedValue({
             metadata: {
               embedding_provider: "openai_compatible",
               embedding_model: "text-embedding-3-large",
@@ -700,7 +700,7 @@ describe("ChromaDB Tools", () => {
 
     function makeClientMock(collection: unknown) {
       return {
-        getOrCreateCollection: jest
+        getCollection: jest
           .fn<() => Promise<unknown>>()
           .mockResolvedValue(collection),
       } as unknown as Parameters<typeof import("../../src/chroma-tools.js").handleChromaTool>[0];
@@ -839,7 +839,7 @@ describe("ChromaDB Tools", () => {
 
     function makeLegacyClient() {
       return {
-        getOrCreateCollection: jest
+        getCollection: jest
           .fn<(args: unknown) => Promise<unknown>>()
           .mockResolvedValue({
             metadata: null,
