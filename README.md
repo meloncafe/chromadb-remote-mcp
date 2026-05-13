@@ -980,3 +980,61 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 ## Support
 
 If you encounter any issues or have questions, please [open an issue](https://github.com/meloncafe/chromadb-remote-mcp/issues).
+
+---
+
+## v2.0.0 Configuration
+
+> v2.0 introduces collection metadata schema v2, OAuth 2.1 OIDC, configurable embedding providers, and an optional reranker. See [MIGRATION.md](./MIGRATION.md) for the upgrade guide.
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `EMBEDDING_PROVIDER` | `chromadb-default` (English-only, default) / `external` / `openai_compatible` / `gemini` |
+| `EMBEDDING_MODEL` | Provider-specific model id. Stored in collection metadata. |
+| `EMBEDDING_DIMENSIONS` | Vector dimensions. Required for external mode; Gemini accepts 768/1536/3072. |
+| `EMBEDDING_API_BASE` | OpenAI-compatible endpoint base URL (Ollama / TEI / Voyage / Together / vLLM). |
+| `EMBEDDING_API_KEY` | Optional bearer key for `openai_compatible`. |
+| `GEMINI_API_KEY` | Google AI Studio API key for the `gemini` provider. |
+| `CONFIDENCE_THRESHOLD` | Default `min_score` (0-1). Tool argument has priority. |
+| `RERANKER_API_BASE` | OpenAI-compatible `/rerank` endpoint. Reranker is fail-soft. |
+| `RERANKER_API_KEY` | Optional bearer key for the reranker. |
+| `RERANKER_MODEL` | Reranker model id (default `bge-reranker-v2-m3`). |
+| `OIDC_ISSUERS` | Comma-separated OIDC issuer URLs. |
+| `OIDC_PRESET` | Convenience preset names: `google,github,microsoft`. |
+| `OIDC_AUDIENCE` | Expected `aud` claim. |
+| `OIDC_SCOPES` | Comma-separated scopes for the Protected Resource Metadata. |
+| `OIDC_LOG_SUB_MODE` | `full` for raw `sub`, otherwise SHA-256 first 12 chars (default). |
+| `MCP_AUTH_TOKEN` | **Service-to-service / CI / internal scripts only.** Use OAuth for human users. Coexists with OIDC — either method accepts. |
+| `LEGACY_COLLECTION_COMPAT` | `true` to allow read-only access to legacy v1 collections. Writes are still rejected. |
+
+### Docker Compose snippet (Gemini + Google OAuth)
+
+```yaml
+services:
+  mcp-server:
+    image: devsaurus/chromadb-remote-mcp:2.0.0
+    environment:
+      EMBEDDING_PROVIDER: gemini
+      EMBEDDING_MODEL: gemini-embedding-001
+      EMBEDDING_DIMENSIONS: "1536"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      OIDC_PRESET: google
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE}  # e.g. your client_id
+      CONFIDENCE_THRESHOLD: "0.55"
+      RERANKER_API_BASE: "http://desktop-gpu.tail-xxxx.ts.net:8001"
+      RERANKER_MODEL: bge-reranker-v2-m3
+```
+
+### OAuth flow
+
+1. Configure your IdP (Google / GitHub / Microsoft) to issue tokens for an audience that matches `OIDC_AUDIENCE`.
+2. Set `OIDC_PRESET=google` (or `OIDC_ISSUERS=...` for custom IdPs) and `OIDC_AUDIENCE=...`.
+3. Clients send `Authorization: Bearer <token>` to `/mcp`.
+4. 401 responses include `WWW-Authenticate: Bearer error="...", resource_metadata="<base>/.well-known/oauth-protected-resource"` per RFC 9728.
+5. `MCP_AUTH_TOKEN` remains valid alongside OAuth — recommended for non-interactive workloads.
+
+### Reading legacy v1 collections
+
+Set `LEGACY_COLLECTION_COMPAT=true` to allow read-only access. Writes (`chroma_add_documents` / `update` / `delete`) on v1 collections still return `Error: Cannot write to legacy v1 collection`. See [MIGRATION.md](./MIGRATION.md).

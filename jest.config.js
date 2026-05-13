@@ -41,19 +41,21 @@ export default {
       },
       moduleNameMapper: {
         "^(\\.{1,2}/.*)\\.js$": "$1",
+        "^http-proxy-middleware$": "<rootDir>/tests/__mocks__/http-proxy-middleware.ts",
       },
       extensionsToTreatAsEsm: [".ts"],
       transformIgnorePatterns: [
-        "node_modules/(?!(supertest|superagent|formidable|@paralleldrive/cuid2)/)",
+        "node_modules/(?!(supertest|superagent|formidable|@paralleldrive/cuid2|http-proxy-middleware|jose)/)",
       ],
       transform: {
-        "^.+\\.tsx?$": [
+        "^.+\\.[tj]sx?$": [
           "ts-jest",
           {
             useESM: true,
             tsconfig: {
               module: "ESNext",
               moduleResolution: "node",
+              allowJs: true,
             },
           },
         ],

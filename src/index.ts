@@ -19,6 +19,12 @@ import rateLimit from "express-rate-limit";
 import {timingSafeEqual} from "crypto";
 import {createChromaTools, handleChromaTool} from "./chroma-tools.js";
 import type {ChromaConfig} from "./types.js";
+import {
+  resolveEmbeddingProviderConfig,
+  embeddingProviderConfig,
+} from "./embedding-config.js";
+import { oidcAuthMiddleware } from "./auth/middleware.js";
+import { protectedResourceHandler } from "./auth/protected-resource.js";
 
 export interface Closeable {
   close(): void;
@@ -266,6 +272,8 @@ const chromaConfig: ChromaConfig = {
   tenantName: process.env.CHROMA_TENANT || "default_tenant",
   databaseName: process.env.CHROMA_DATABASE || "default_database",
 };
+
+export { resolveEmbeddingProviderConfig, embeddingProviderConfig };
 
 /**
  * Waits for ChromaDB server to become available with retry logic.
@@ -577,7 +585,7 @@ export async function callToolHandler(request: {
   params: { name: string; arguments?: Record<string, unknown> };
 }) {
   const {name, arguments: args} = request.params;
-  return handleChromaTool(getChromaClient(), name, args || {});
+  return handleChromaTool(getChromaClient(), name, args || {}, embeddingProviderConfig);
 }
 
 // ============================================================================
@@ -980,7 +988,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: "chroma-remote-mcp",
-      version: "1.0.2",
+      version: "2.0.0",
     },
     {
       capabilities: {
@@ -988,7 +996,7 @@ export function createServer(): Server {
         prompts: {},
         resources: {},
         logging: {},
-        completion: {},
+        completions: {},
       },
     },
   );
@@ -1427,7 +1435,7 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
 
 // MCP endpoint - Streamable HTTP Transport (with protocol version, origin validation and optional auth)
 // This must be defined BEFORE the catch-all proxy
-app.post("/mcp", validateProtocolVersion, validateOriginHeader, authenticateMCP, mcpHandler);
+app.post("/mcp", validateProtocolVersion, validateOriginHeader, oidcAuthMiddleware, mcpHandler);
 
 // Health check handler - exported for testing
 export async function healthHandler(_req: express.Request, res: express.Response) {
@@ -1452,6 +1460,9 @@ export async function healthHandler(_req: express.Request, res: express.Response
 
 // Health check endpoint (no authentication required)
 app.get("/health", healthHandler);
+
+// RFC 9728 Protected Resource Metadata — public (no auth required)
+app.get("/.well-known/oauth-protected-resource", protectedResourceHandler);
 
 // Proxy handlers - exported for testing
 // proxyReq type is from http-proxy-middleware internal types
@@ -1505,7 +1516,7 @@ app.use(trackConnection);
 // ChromaDB REST API Proxy (catch-all for all other requests)
 // This must be LAST to catch all non-MCP, non-health requests
 app.use(
-  authenticateMCP,
+  oidcAuthMiddleware,
   createProxyMiddleware({
     target: `http://${chromaConfig.host}:${chromaConfig.port}`,
     changeOrigin: true,
@@ -1578,7 +1589,7 @@ export async function main() {
     // Return server for graceful shutdown
     return app.listen(port, () => {
       console.log(`
-🚀 ChromaDB Remote MCP Server v1.0.2
+🚀 ChromaDB Remote MCP Server v2.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📡 Endpoints

@@ -980,3 +980,61 @@ chromadb-remote-mcp/
 ## 지원
 
 문제가 발생하거나 질문이 있으시면 [이슈를 열어주세요](https://github.com/meloncafe/chromadb-remote-mcp/issues).
+
+---
+
+## v2.0.0 설정 가이드
+
+> v2.0 은 컬렉션 메타데이터 스키마 v2, OAuth 2.1 OIDC 인증, 다중 임베딩 provider, 옵셔널 reranker 를 도입합니다. 업그레이드는 [MIGRATION.md](./MIGRATION.md) 참조.
+
+### 환경변수
+
+| 변수 | 용도 |
+|------|------|
+| `EMBEDDING_PROVIDER` | `chromadb-default` (영어 전용, 기본) / `external` / `openai_compatible` / `gemini` |
+| `EMBEDDING_MODEL` | provider 별 모델 식별자. 컬렉션 metadata 에 저장됨. |
+| `EMBEDDING_DIMENSIONS` | 벡터 차원. external 모드 필수. Gemini 는 768/1536/3072. |
+| `EMBEDDING_API_BASE` | OpenAI 호환 endpoint base URL (Ollama / TEI / Voyage / Together / vLLM). |
+| `EMBEDDING_API_KEY` | `openai_compatible` 옵션 Bearer 키. |
+| `GEMINI_API_KEY` | `gemini` provider 용 Google AI Studio API key. |
+| `CONFIDENCE_THRESHOLD` | 기본 `min_score` (0-1). tool 인자가 우선. |
+| `RERANKER_API_BASE` | OpenAI 호환 `/rerank` endpoint. 실패해도 query 진행 (fail-soft). |
+| `RERANKER_API_KEY` | reranker 옵션 Bearer 키. |
+| `RERANKER_MODEL` | reranker 모델 id (default `bge-reranker-v2-m3`). |
+| `OIDC_ISSUERS` | 콤마 구분 OIDC issuer URL 목록. |
+| `OIDC_PRESET` | 프리셋: `google,github,microsoft`. |
+| `OIDC_AUDIENCE` | 검증할 `aud` claim. |
+| `OIDC_SCOPES` | Protected Resource Metadata 에 표기할 scope 목록 (콤마 구분). |
+| `OIDC_LOG_SUB_MODE` | `full` 시 raw `sub`, 기본은 SHA-256 앞 12자. |
+| `MCP_AUTH_TOKEN` | **서비스간 / CI / 내부 스크립트 전용.** 사람 사용자는 OAuth 사용 권장. OAuth 와 공존. |
+| `LEGACY_COLLECTION_COMPAT` | `true` 설정 시 v1 컬렉션 읽기만 허용. 쓰기는 여전히 거부. |
+
+### Docker Compose 예제 (Gemini + Google OAuth)
+
+```yaml
+services:
+  mcp-server:
+    image: devsaurus/chromadb-remote-mcp:2.0.0
+    environment:
+      EMBEDDING_PROVIDER: gemini
+      EMBEDDING_MODEL: gemini-embedding-001
+      EMBEDDING_DIMENSIONS: "1536"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      OIDC_PRESET: google
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE}  # 예: 클라이언트의 client_id
+      CONFIDENCE_THRESHOLD: "0.55"
+      RERANKER_API_BASE: "http://desktop-gpu.tail-xxxx.ts.net:8001"
+      RERANKER_MODEL: bge-reranker-v2-m3
+```
+
+### OAuth 흐름
+
+1. IdP (Google / GitHub / Microsoft) 에서 `OIDC_AUDIENCE` 와 일치하는 audience 로 토큰 발급 설정.
+2. `OIDC_PRESET=google` (또는 `OIDC_ISSUERS=...`) + `OIDC_AUDIENCE=...` 설정.
+3. 클라이언트는 `Authorization: Bearer <token>` 으로 `/mcp` 호출.
+4. 401 응답은 RFC 9728 에 따라 `WWW-Authenticate: Bearer error="...", resource_metadata="<base>/.well-known/oauth-protected-resource"` 포함.
+5. `MCP_AUTH_TOKEN` 은 OAuth 와 공존 — 비대화형 워크로드 (CI, 스크립트) 권장.
+
+### v1 컬렉션 호환
+
+`LEGACY_COLLECTION_COMPAT=true` 설정 시 v1 컬렉션 읽기 허용. `chroma_add_documents` / `update` / `delete` 등 쓰기는 여전히 `Error: Cannot write to legacy v1 collection` 반환. 자세한 마이그레이션은 [MIGRATION.md](./MIGRATION.md).

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-13
+
+### Breaking changes
+
+- **Collection metadata schema v2** — All new collections persist `embedding_provider`, `embedding_model`, `embedding_dimensions` in metadata. Existing v1 collections fail with `Embedding provider mismatch` on read/write. Set `LEGACY_COLLECTION_COMPAT=true` to allow read-only access to v1 collections, or re-index per `MIGRATION.md`.
+- **Default embedding behaviour** — Previous releases silently used ChromaDB's built-in `all-MiniLM-L6-v2` (English-only, 384 dim). v2 emits a startup warning when `EMBEDDING_PROVIDER` is unset and the default is in use.
+- **Authentication** — `/mcp` and the catch-all REST proxy now go through the OIDC-aware middleware. `MCP_AUTH_TOKEN` continues to work and is now documented as a service-to-service credential; OAuth 2.1 OIDC is the recommended path for human users.
+
+### Added
+
+- **Embedding provider abstraction** (`src/embedding/`) — pluggable providers selected by `EMBEDDING_PROVIDER`:
+  - `chromadb-default` — built-in `all-MiniLM-L6-v2` (English-only fallback)
+  - `external` — caller supplies pre-computed embeddings via tool arguments
+  - `openai_compatible` — any `/v1/embeddings` endpoint (OpenAI, Voyage, Together, Ollama, TEI, vLLM)
+  - `gemini` — Google AI Studio Embedding API (`gemini-embedding-001`) with task_type split (`RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY`) and Matryoshka dimensions (768/1536/3072)
+- **External embedding mode** — `chroma_add_documents` accepts `embeddings`; `chroma_query_documents` accepts `query_embeddings`. Server validates dimensions against collection metadata.
+- **Per-collection provider override** — collection metadata with explicit `embedding_provider`/`embedding_model`/`embedding_dimensions` overrides the server default for that collection only.
+- **Confidence gating** — `chroma_query_documents` gains `min_score` (0-1); items below the similarity threshold are dropped, and a `confidence_gate: "no_confident_match"` flag is emitted when every result is filtered. Default sourced from `CONFIDENCE_THRESHOLD`.
+- **Reranker layer (fail-soft)** — `chroma_query_documents` gains `rerank` / `rerank_top_n` / `rerank_top_k`. Reranker is contacted via `RERANKER_API_BASE` (OpenAI-compatible `/rerank`). All failures (timeout, HTTP error, missing config) degrade silently to original ordering.
+- **OAuth 2.1 OIDC multi-provider** — `OIDC_ISSUERS` (comma-separated) or `OIDC_PRESET=google,github,microsoft`. Verifies signature (RS256/ES256/EdDSA), `iss`, `aud` (`OIDC_AUDIENCE`), `exp`, `nbf/iat` (60s clock skew). JWKS auto-discovered via `/.well-known/openid-configuration` and cached for 1 h (rotation-safe).
+- **RFC 9728 Protected Resource Metadata** — `GET /.well-known/oauth-protected-resource` returns `resource`, `authorization_servers`, `bearer_methods_supported`, `scopes_supported`. 401 responses include `resource_metadata=` in `WWW-Authenticate` and use the correct RFC 6750 `error=` parameter (`invalid_request` / `invalid_token` / `insufficient_scope`).
+- **User identity logging** — authenticated requests log the `sub` claim hashed (SHA-256 first 12 chars) by default, raw with `OIDC_LOG_SUB_MODE=full`.
+- **`MIGRATION.md`** — step-by-step v1 → v2 guide in Korean and English.
+
+### Dependencies
+
+- Added `jose@^5.9.0` (JWT verification).
+
 ## [1.0.2] - 2025-10-31
 - fix(security): configure CodeQL to suppress log injection warnings [#d7365c1](https://github.com/meloncafe/chromadb-remote-mcp/commit/d7365c16498bc0856b2e7728c8a399f6dee4844d)
 - fix(security): enhance log sanitization to resolve CodeQL warnings [#d3eb3ec](https://github.com/meloncafe/chromadb-remote-mcp/commit/d3eb3ecdc140614264d2a10c1daab534f94baa3a)

@@ -2710,4 +2710,28 @@ describe("index.ts", () => {
       });
     });
   });
+
+  describe("R3: startup warning (EMBEDDING_PROVIDER unset)", () => {
+    let originalEnv: NodeJS.ProcessEnv;
+
+    beforeEach(() => {
+      originalEnv = { ...process.env };
+      delete process.env.EMBEDDING_PROVIDER;
+      delete process.env.EMBEDDING_MODEL;
+      delete process.env.EMBEDDING_DIMENSIONS;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it("emits 'all-MiniLM-L6-v2, English-only' warning when EMBEDDING_PROVIDER is unset", async () => {
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+      const { resolveEmbeddingProviderConfig } = await import("../../src/embedding-config.js");
+      resolveEmbeddingProviderConfig();
+      const warnMessages = warnSpy.mock.calls.map((args) => String(args[0])).join("\n");
+      expect(warnMessages).toContain("all-MiniLM-L6-v2, English-only");
+      warnSpy.mockRestore();
+    });
+  });
 });

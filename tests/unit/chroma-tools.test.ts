@@ -6,6 +6,13 @@ import {
   validateCollectionName,
   validateDocumentIds,
 } from "../../src/chroma-tools.js";
+import type { EmbeddingProviderConfig } from "../../src/types.js";
+
+const TEST_SERVER_CFG: EmbeddingProviderConfig = {
+  provider: "chromadb-default",
+  model: "all-MiniLM-L6-v2",
+  dimensions: 384,
+};
 
 /**
  * ChromaDB Tools Tests
@@ -192,7 +199,12 @@ describe("ChromaDB Tools", () => {
       mockCollection = {
         name: "test_collection",
         id: "test-collection-id",
-        metadata: { description: "Test collection" },
+        metadata: {
+          description: "Test collection",
+          embedding_provider: "chromadb-default",
+          embedding_model: "all-MiniLM-L6-v2",
+          embedding_dimensions: 384,
+        },
         count: jest.fn<() => Promise<number>>(() => Promise.resolve(42)),
         peek: jest.fn<() => Promise<GetResult<Metadata>>>(() =>
           Promise.resolve(
@@ -243,7 +255,7 @@ describe("ChromaDB Tools", () => {
       it("should validate collection name", async () => {
         const result = await handleChromaTool(mockClient, "chroma_create_collection", {
           collection_name: "invalid name!",
-        });
+        }, TEST_SERVER_CFG);
 
         expect(result.content[0].text).toContain("Error:");
         expect(result.content[0].text).toContain("alphanumeric");
@@ -253,7 +265,7 @@ describe("ChromaDB Tools", () => {
       it("should create collection with valid name", async () => {
         const result = await handleChromaTool(mockClient, "chroma_create_collection", {
           collection_name: "valid_collection",
-        });
+        }, TEST_SERVER_CFG);
 
         expect(result.content[0].text).toContain("created successfully");
         expect(mockClient.createCollection).toHaveBeenCalled();
@@ -265,7 +277,7 @@ describe("ChromaDB Tools", () => {
         const result = await handleChromaTool(mockClient, "chroma_delete_documents", {
           collection_name: "test_collection",
           ids: [],
-        });
+        }, TEST_SERVER_CFG);
 
         expect(result.content[0].text).toContain("Error:");
         expect(result.content[0].text).toContain("cannot be empty");
@@ -275,7 +287,7 @@ describe("ChromaDB Tools", () => {
         const result = await handleChromaTool(mockClient, "chroma_delete_documents", {
           collection_name: "test_collection",
           ids: ["id1", "id2"],
-        });
+        }, TEST_SERVER_CFG);
 
         expect(result.content[0].text).toContain("Deleted 2 documents");
         expect(mockCollection.delete).toHaveBeenCalledWith({ ids: ["id1", "id2"] });
@@ -284,13 +296,13 @@ describe("ChromaDB Tools", () => {
 
     describe("chroma_list_collections", () => {
       it("should list collections", async () => {
-        const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+        const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("test_collection");
       });
 
       it("should return placeholder for empty list", async () => {
         mockClient.listCollections.mockResolvedValue([]);
-        const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+        const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("__NO_COLLECTIONS_FOUND__");
       });
     });
@@ -299,7 +311,7 @@ describe("ChromaDB Tools", () => {
       it("should peek collection with default limit", async () => {
         const result = await handleChromaTool(mockClient, "chroma_peek_collection", {
           collection_name: "test_collection",
-        });
+        }, TEST_SERVER_CFG);
         expect(mockCollection.peek).toHaveBeenCalledWith({ limit: 5 });
         expect(result.content[0].text).toContain("id1");
       });
@@ -308,7 +320,7 @@ describe("ChromaDB Tools", () => {
         const _result = await handleChromaTool(mockClient, "chroma_peek_collection", {
           collection_name: "test_collection",
           limit: 10,
-        });
+        }, TEST_SERVER_CFG);
         expect(mockCollection.peek).toHaveBeenCalledWith({ limit: 10 });
       });
     });
@@ -317,7 +329,7 @@ describe("ChromaDB Tools", () => {
       it("should get collection info", async () => {
         const result = await handleChromaTool(mockClient, "chroma_get_collection_info", {
           collection_name: "test_collection",
-        });
+        }, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("test_collection");
         expect(result.content[0].text).toContain("42");
       });
@@ -327,7 +339,7 @@ describe("ChromaDB Tools", () => {
       it("should get document count", async () => {
         const result = await handleChromaTool(mockClient, "chroma_get_collection_count", {
           collection_name: "test_collection",
-        });
+        }, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("42");
       });
     });
@@ -336,7 +348,7 @@ describe("ChromaDB Tools", () => {
       it("should delete collection", async () => {
         const result = await handleChromaTool(mockClient, "chroma_delete_collection", {
           collection_name: "test_collection",
-        });
+        }, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("deleted successfully");
         expect(mockClient.deleteCollection).toHaveBeenCalledWith({ name: "test_collection" });
       });
@@ -348,7 +360,7 @@ describe("ChromaDB Tools", () => {
           collection_name: "test_collection",
           ids: ["id1", "id2"],
           documents: ["doc1", "doc2"],
-        });
+        }, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("Added 2 documents");
         expect(mockCollection.add).toHaveBeenCalled();
       });
@@ -359,7 +371,7 @@ describe("ChromaDB Tools", () => {
         const result = await handleChromaTool(mockClient, "chroma_query_documents", {
           collection_name: "test_collection",
           query_texts: ["query1"],
-        });
+        }, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("id1");
         expect(mockCollection.query).toHaveBeenCalled();
       });
@@ -369,7 +381,7 @@ describe("ChromaDB Tools", () => {
       it("should get documents", async () => {
         const result = await handleChromaTool(mockClient, "chroma_get_documents", {
           collection_name: "test_collection",
-        });
+        }, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("id1");
         expect(mockCollection.get).toHaveBeenCalled();
       });
@@ -381,7 +393,7 @@ describe("ChromaDB Tools", () => {
           collection_name: "test_collection",
           ids: ["id1"],
           documents: ["updated doc"],
-        });
+        }, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("Updated 1 documents");
         expect(mockCollection.update).toHaveBeenCalled();
       });
@@ -389,7 +401,7 @@ describe("ChromaDB Tools", () => {
 
     describe("error handling", () => {
       it("should handle unknown tool", async () => {
-        const result = await handleChromaTool(mockClient, "unknown_tool", {});
+        const result = await handleChromaTool(mockClient, "unknown_tool", {}, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("Error");
         expect(result.content[0].text).toContain("Unknown tool");
       });
@@ -397,7 +409,7 @@ describe("ChromaDB Tools", () => {
       it("should handle ChromaDB errors", async () => {
         mockClient.listCollections.mockRejectedValue(new Error("Connection failed"));
 
-        const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+        const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
         expect(result.content[0].text).toContain("Error");
         expect(result.content[0].text).toContain("Connection failed");
       });
@@ -405,7 +417,7 @@ describe("ChromaDB Tools", () => {
       it("should handle non-Error objects in development", async () => {
         mockClient.listCollections.mockRejectedValue("string error message");
 
-        const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+        const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
         expect(result.content[0].text).toBe("Error: string error message");
       });
 
@@ -425,7 +437,7 @@ describe("ChromaDB Tools", () => {
             new Error("Validation error: invalid parameter"),
           );
 
-          const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+          const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Invalid request parameters");
           expect(result.content[0].text).not.toContain("invalid parameter");
@@ -436,7 +448,7 @@ describe("ChromaDB Tools", () => {
             new Error("Invalid collection name provided"),
           );
 
-          const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+          const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Invalid request parameters");
         });
@@ -444,7 +456,7 @@ describe("ChromaDB Tools", () => {
         it("should sanitize required field errors in production", async () => {
           mockClient.listCollections.mockRejectedValue(new Error("Required field missing"));
 
-          const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+          const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Invalid request parameters");
         });
@@ -454,7 +466,7 @@ describe("ChromaDB Tools", () => {
 
           const result = await handleChromaTool(mockClient, "chroma_peek_collection", {
             collection_name: "test",
-          });
+          }, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Resource not found");
         });
@@ -464,7 +476,7 @@ describe("ChromaDB Tools", () => {
 
           const result = await handleChromaTool(mockClient, "chroma_peek_collection", {
             collection_name: "test",
-          });
+          }, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Resource not found");
         });
@@ -474,7 +486,7 @@ describe("ChromaDB Tools", () => {
 
           const result = await handleChromaTool(mockClient, "chroma_create_collection", {
             collection_name: "test",
-          });
+          }, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Resource already exists");
         });
@@ -484,7 +496,7 @@ describe("ChromaDB Tools", () => {
 
           const result = await handleChromaTool(mockClient, "chroma_create_collection", {
             collection_name: "test",
-          });
+          }, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Resource already exists");
         });
@@ -494,7 +506,7 @@ describe("ChromaDB Tools", () => {
             new Error("ChromaDB internal error at /var/lib/chromadb"),
           );
 
-          const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+          const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Database operation failed");
           expect(result.content[0].text).not.toContain("/var/lib/chromadb");
@@ -503,7 +515,7 @@ describe("ChromaDB Tools", () => {
         it("should sanitize database errors in production", async () => {
           mockClient.listCollections.mockRejectedValue(new Error("Database connection timeout"));
 
-          const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+          const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Database operation failed");
         });
@@ -513,7 +525,7 @@ describe("ChromaDB Tools", () => {
 
           const result = await handleChromaTool(mockClient, "chroma_peek_collection", {
             collection_name: "test",
-          });
+          }, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Database operation failed");
         });
@@ -521,7 +533,7 @@ describe("ChromaDB Tools", () => {
         it("should return generic error for unknown errors in production", async () => {
           mockClient.listCollections.mockRejectedValue(new Error("Some random error"));
 
-          const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+          const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Operation failed");
         });
@@ -529,11 +541,358 @@ describe("ChromaDB Tools", () => {
         it("should handle non-Error objects in production", async () => {
           mockClient.listCollections.mockRejectedValue("string error");
 
-          const result = await handleChromaTool(mockClient, "chroma_list_collections", {});
+          const result = await handleChromaTool(mockClient, "chroma_list_collections", {}, TEST_SERVER_CFG);
 
           expect(result.content[0].text).toBe("Error: Operation failed");
         });
       });
+    });
+  });
+
+  describe("Phase 1: metadata schema v2", () => {
+    const serverCfg = {
+      provider: "gemini",
+      model: "gemini-embedding-001",
+      dimensions: 1536,
+    };
+
+    describe("buildCollectionMetadata", () => {
+      it("injects three v2 keys", async () => {
+        const { buildCollectionMetadata } = await import("../../src/chroma-tools.js");
+        const meta = buildCollectionMetadata(serverCfg);
+        expect(meta.embedding_provider).toBe("gemini");
+        expect(meta.embedding_model).toBe("gemini-embedding-001");
+        expect(meta.embedding_dimensions).toBe(1536);
+      });
+
+      it("merges user metadata with v2 keys (v2 keys take precedence)", async () => {
+        const { buildCollectionMetadata } = await import("../../src/chroma-tools.js");
+        const meta = buildCollectionMetadata(serverCfg, {
+          description: "user note",
+          embedding_provider: "wrong",
+        });
+        expect(meta.description).toBe("user note");
+        expect(meta.embedding_provider).toBe("gemini");
+      });
+    });
+
+    describe("assertCollectionMetadataMatch", () => {
+      it("returns ok=true on full match", async () => {
+        const { assertCollectionMetadataMatch } = await import("../../src/chroma-tools.js");
+        const result = assertCollectionMetadataMatch(
+          {
+            embedding_provider: "gemini",
+            embedding_model: "gemini-embedding-001",
+            embedding_dimensions: 1536,
+          },
+          serverCfg,
+        );
+        expect(result.ok).toBe(true);
+      });
+
+      it('returns reason="legacy" on null/empty metadata', async () => {
+        const { assertCollectionMetadataMatch } = await import("../../src/chroma-tools.js");
+        const result = assertCollectionMetadataMatch(null, serverCfg);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.reason).toBe("legacy");
+          expect(result.message).toContain("LEGACY_COLLECTION_COMPAT");
+        }
+      });
+
+      it('returns reason="mismatch" when provider differs', async () => {
+        const { assertCollectionMetadataMatch } = await import("../../src/chroma-tools.js");
+        const result = assertCollectionMetadataMatch(
+          {
+            embedding_provider: "openai_compatible",
+            embedding_model: "gemini-embedding-001",
+            embedding_dimensions: 1536,
+          },
+          serverCfg,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.reason).toBe("mismatch");
+          expect(result.message).toContain("openai_compatible");
+        }
+      });
+
+      it('returns reason="mismatch" when dimensions differ', async () => {
+        const { assertCollectionMetadataMatch } = await import("../../src/chroma-tools.js");
+        const result = assertCollectionMetadataMatch(
+          {
+            embedding_provider: "gemini",
+            embedding_model: "gemini-embedding-001",
+            embedding_dimensions: 768,
+          },
+          serverCfg,
+        );
+        expect(result.ok).toBe(false);
+      });
+    });
+
+    describe("handleChromaTool — mismatch error path", () => {
+      it("returns error content when collection metadata is legacy v1", async () => {
+        const { handleChromaTool } = await import("../../src/chroma-tools.js");
+        const fakeClient = {
+          getOrCreateCollection: jest.fn<() => Promise<unknown>>().mockResolvedValue({
+            metadata: null,
+            count: jest.fn<() => Promise<number>>().mockResolvedValue(0),
+          }),
+        } as unknown as Parameters<typeof handleChromaTool>[0];
+        const result = await handleChromaTool(
+          fakeClient,
+          "chroma_get_collection_count",
+          { collection_name: "legacy_test" },
+          serverCfg,
+        );
+        expect(result.content[0].text).toContain("Embedding provider mismatch");
+        expect(result.content[0].text).toContain("legacy v1 collection");
+      });
+
+      it("returns error content when collection provider differs", async () => {
+        const { handleChromaTool } = await import("../../src/chroma-tools.js");
+        const fakeClient = {
+          getOrCreateCollection: jest.fn<() => Promise<unknown>>().mockResolvedValue({
+            metadata: {
+              embedding_provider: "openai_compatible",
+              embedding_model: "text-embedding-3-large",
+              embedding_dimensions: 3072,
+            },
+            count: jest.fn<() => Promise<number>>().mockResolvedValue(0),
+          }),
+        } as unknown as Parameters<typeof handleChromaTool>[0];
+        const result = await handleChromaTool(
+          fakeClient,
+          "chroma_get_collection_count",
+          { collection_name: "wrong_provider" },
+          serverCfg,
+        );
+        expect(result.content[0].text).toContain("Embedding provider mismatch");
+        expect(result.content[0].text).toContain("openai_compatible");
+      });
+    });
+  });
+
+  describe("Phase 2: external embedding mode (R4, R5, R6)", () => {
+    const serverCfg = {
+      provider: "external",
+      model: "external",
+      dimensions: 4,
+    };
+
+    function makeCollectionMock() {
+      return {
+        metadata: {
+          embedding_provider: "external",
+          embedding_model: "external",
+          embedding_dimensions: 4,
+        },
+        add: jest.fn<(args: unknown) => Promise<void>>().mockResolvedValue(undefined),
+        query: jest.fn<(args: unknown) => Promise<unknown>>().mockResolvedValue({
+          ids: [["q1"]],
+          documents: [["doc"]],
+          metadatas: [[null]],
+          distances: [[0.1]],
+        }),
+      };
+    }
+
+    function makeClientMock(collection: unknown) {
+      return {
+        getOrCreateCollection: jest
+          .fn<() => Promise<unknown>>()
+          .mockResolvedValue(collection),
+      } as unknown as Parameters<typeof import("../../src/chroma-tools.js").handleChromaTool>[0];
+    }
+
+    it("R4: chroma_add_documents accepts embeddings without documents", async () => {
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const collection = makeCollectionMock();
+      const result = await handleChromaTool(
+        makeClientMock(collection),
+        "chroma_add_documents",
+        {
+          collection_name: "ext1",
+          ids: ["a", "b"],
+          embeddings: [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.6, 0.7, 0.8],
+          ],
+        },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("Added 2 documents");
+      expect(collection.add).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ids: ["a", "b"],
+          embeddings: [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.6, 0.7, 0.8],
+          ],
+          documents: undefined,
+        }),
+      );
+    });
+
+    it("R4: chroma_add_documents rejects when both documents and embeddings missing", async () => {
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const collection = makeCollectionMock();
+      const result = await handleChromaTool(
+        makeClientMock(collection),
+        "chroma_add_documents",
+        { collection_name: "ext1", ids: ["a"] },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("documents or embeddings required");
+      expect(collection.add).not.toHaveBeenCalled();
+    });
+
+    it("R5: chroma_query_documents accepts query_embeddings without query_texts", async () => {
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const collection = makeCollectionMock();
+      const result = await handleChromaTool(
+        makeClientMock(collection),
+        "chroma_query_documents",
+        {
+          collection_name: "ext1",
+          query_embeddings: [[0.1, 0.2, 0.3, 0.4]],
+          n_results: 1,
+        },
+        serverCfg,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.ids).toEqual([["q1"]]);
+      expect(collection.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryEmbeddings: [[0.1, 0.2, 0.3, 0.4]],
+          queryTexts: undefined,
+          nResults: 1,
+        }),
+      );
+    });
+
+    it("R5: chroma_query_documents rejects when both query_texts and query_embeddings missing", async () => {
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const collection = makeCollectionMock();
+      const result = await handleChromaTool(
+        makeClientMock(collection),
+        "chroma_query_documents",
+        { collection_name: "ext1" },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("query_texts or query_embeddings required");
+      expect(collection.query).not.toHaveBeenCalled();
+    });
+
+    it("R6: chroma_add_documents rejects when embedding dimension mismatches collection metadata", async () => {
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const collection = makeCollectionMock();
+      const result = await handleChromaTool(
+        makeClientMock(collection),
+        "chroma_add_documents",
+        {
+          collection_name: "ext1",
+          ids: ["a"],
+          embeddings: [[0.1, 0.2]],
+        },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("Embedding dimension mismatch");
+      expect(result.content[0].text).toContain("got 2");
+      expect(result.content[0].text).toContain("expected 4");
+      expect(collection.add).not.toHaveBeenCalled();
+    });
+
+    it("R6: chroma_query_documents rejects when query_embedding dimension mismatches", async () => {
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const collection = makeCollectionMock();
+      const result = await handleChromaTool(
+        makeClientMock(collection),
+        "chroma_query_documents",
+        {
+          collection_name: "ext1",
+          query_embeddings: [[0.1, 0.2]],
+        },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("Embedding dimension mismatch");
+      expect(collection.query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Phase 8: legacy collection compat (R32)", () => {
+    const serverCfg = TEST_SERVER_CFG;
+
+    let originalEnv: NodeJS.ProcessEnv;
+    let warnSpy: jest.SpiedFunction<typeof console.warn>;
+
+    beforeEach(() => {
+      originalEnv = { ...process.env };
+      warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+      warnSpy.mockRestore();
+    });
+
+    function makeLegacyClient() {
+      return {
+        getOrCreateCollection: jest
+          .fn<(args: unknown) => Promise<unknown>>()
+          .mockResolvedValue({
+            metadata: null,
+            count: jest.fn<() => Promise<number>>().mockResolvedValue(7),
+          }),
+      } as unknown as Parameters<
+        typeof import("../../src/chroma-tools.js").handleChromaTool
+      >[0];
+    }
+
+    it("read tool on legacy v1 collection passes with warn when LEGACY_COLLECTION_COMPAT=true", async () => {
+      process.env.LEGACY_COLLECTION_COMPAT = "true";
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const client = makeLegacyClient();
+      const result = await handleChromaTool(
+        client,
+        "chroma_get_collection_count",
+        { collection_name: "legacy" },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("7 documents");
+      expect(warnSpy.mock.calls.some((c) => String(c[0]).match(/legacy-compat/))).toBe(true);
+    });
+
+    it("write tool on legacy v1 collection is rejected even with LEGACY_COLLECTION_COMPAT=true", async () => {
+      process.env.LEGACY_COLLECTION_COMPAT = "true";
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const client = makeLegacyClient();
+      const result = await handleChromaTool(
+        client,
+        "chroma_add_documents",
+        {
+          collection_name: "legacy",
+          ids: ["a"],
+          documents: ["doc"],
+        },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("Cannot write to legacy v1 collection");
+    });
+
+    it("read tool on legacy v1 collection still errors when LEGACY_COLLECTION_COMPAT not set", async () => {
+      delete process.env.LEGACY_COLLECTION_COMPAT;
+      const { handleChromaTool } = await import("../../src/chroma-tools.js");
+      const client = makeLegacyClient();
+      const result = await handleChromaTool(
+        client,
+        "chroma_get_collection_count",
+        { collection_name: "legacy" },
+        serverCfg,
+      );
+      expect(result.content[0].text).toContain("Embedding provider mismatch");
+      expect(result.content[0].text).toContain("legacy v1 collection");
     });
   });
 });
