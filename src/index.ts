@@ -25,6 +25,7 @@ import {
 } from "./embedding-config.js";
 import { oidcAuthMiddleware } from "./auth/middleware.js";
 import { protectedResourceHandler } from "./auth/protected-resource.js";
+import { createOAuthProxyRouter } from "./auth/oauth-proxy/index.js";
 
 export interface Closeable {
   close(): void;
@@ -212,6 +213,22 @@ export function validateEnvironmentVariables() {
     );
   }
 
+  // R3: OAuth proxy requires Google client credentials when enabled.
+  // Validated at boot so misconfigured deployments fail fast instead of
+  // silently 500'ing on the first /oauth/authorize request.
+  if (isOAuthProxyEnabled()) {
+    if (!process.env.GOOGLE_OAUTH_CLIENT_ID) {
+      errors.push(
+        "❌ CRITICAL: GOOGLE_OAUTH_CLIENT_ID is required when OAUTH_PROXY_ENABLED=true",
+      );
+    }
+    if (!process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+      errors.push(
+        "❌ CRITICAL: GOOGLE_OAUTH_CLIENT_SECRET is required when OAUTH_PROXY_ENABLED=true",
+      );
+    }
+  }
+
   if (process.env.CHROMA_PORT) {
     const port = parseInt(process.env.CHROMA_PORT, 10);
     if (isNaN(port) || port <= 0 || port > 65535) {
@@ -260,6 +277,19 @@ const chromaConfig: ChromaConfig = {
   tenantName: process.env.CHROMA_TENANT || "default_tenant",
   databaseName: process.env.CHROMA_DATABASE || "default_database",
 };
+
+/**
+ * Parses `OAUTH_PROXY_ENABLED` env var as a strict boolean.
+ * Returns true only when the value is exactly the string "true"
+ * (case-insensitive). All other values (unset, "", "false", "0",
+ * "no", etc.) return false. This is the v2.1.0 opt-in flag for
+ * the Google OAuth Authorization-Server proxy.
+ */
+export function isOAuthProxyEnabled(): boolean {
+  const raw = process.env.OAUTH_PROXY_ENABLED;
+  if (typeof raw !== "string") return false;
+  return raw.trim().toLowerCase() === "true";
+}
 
 export { resolveEmbeddingProviderConfig, embeddingProviderConfig };
 
@@ -1363,6 +1393,25 @@ app.get("/health", healthHandler);
 // RFC 9728 Protected Resource Metadata — public (no auth required)
 app.get("/.well-known/oauth-protected-resource", protectedResourceHandler);
 
+// R8/R13: Mount OAuth Authorization-Server proxy when explicitly enabled.
+// The router exposes 5 endpoints:
+//   GET  /.well-known/oauth-authorization-server   (RFC 8414)
+//   POST /oauth/register                            (RFC 7591 DCR)
+//   GET  /oauth/authorize                           → 302 to Google
+//   GET  /oauth/callback                            ← from Google
+//   POST /oauth/token                               (PKCE + id_token passthrough)
+//
+// Global middleware order (already installed earlier in this file):
+//   1. express.json (only on /mcp; oauth-proxy router mounts its own body parsers)
+//   2. limiter (rate limit — applies to oauth-proxy router too)
+//   3. createTimeoutMiddleware
+//   4. securityHeaders
+//
+// So mounting the router here puts it AFTER the limiter, satisfying R13.
+if (isOAuthProxyEnabled()) {
+  app.use(createOAuthProxyRouter());
+}
+
 // Proxy handlers - exported for testing
 // proxyReq type is from http-proxy-middleware internal types
 export function proxyReqHandler(
@@ -1501,6 +1550,7 @@ export async function main() {
 
 🔐 Security
    Auth Token:   ${MCP_AUTH_TOKEN ? "✅ Enabled" : "⚠️  DISABLED (not recommended for production)"}
+   OAuth Proxy:  ${isOAuthProxyEnabled() ? "✅ Enabled (Google passthrough)" : "⚠️  Disabled"}
    Rate Limit:   ${config.rateLimit}
 
 ⚙️  Configuration

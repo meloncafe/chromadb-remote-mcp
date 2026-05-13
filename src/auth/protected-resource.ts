@@ -17,6 +17,12 @@ export function resolveResourceBaseUrl(req: Request): string {
   return `${proto}://${host}`;
 }
 
+function isOAuthProxyEnabled(): boolean {
+  const raw = process.env.OAUTH_PROXY_ENABLED;
+  if (typeof raw !== "string") return false;
+  return raw.trim().toLowerCase() === "true";
+}
+
 /**
  * RFC 9728 Protected Resource Metadata.
  * GET /.well-known/oauth-protected-resource → JSON metadata describing
@@ -24,10 +30,15 @@ export function resolveResourceBaseUrl(req: Request): string {
  */
 export function protectedResourceHandler(req: Request, res: Response): void {
   const resource = resolveResourceBaseUrl(req);
-  const issuers = resolveOidcIssuers(
-    process.env.OIDC_ISSUERS,
-    process.env.OIDC_PRESET,
-  );
+
+  // R10: When the proxy is enabled, advertise *this* server as the authorization
+  // server. Clients (Claude Desktop, mcp-remote, ...) then send DCR + authorize
+  // requests to our /oauth/* endpoints instead of trying Google directly
+  // (Google does not support DCR — RFC 7591 — so direct integration is broken).
+  const issuers = isOAuthProxyEnabled()
+    ? [resource]
+    : resolveOidcIssuers(process.env.OIDC_ISSUERS, process.env.OIDC_PRESET);
+
   const scopes = (process.env.OIDC_SCOPES || "")
     .split(",")
     .map((s) => s.trim())

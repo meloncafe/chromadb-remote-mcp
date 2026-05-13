@@ -46,4 +46,67 @@ describe("Phase 10: GET /.well-known/oauth-protected-resource (R29, R38)", () =>
     const json = (await response.json()) as Record<string, unknown>;
     expect(json.authorization_servers).toEqual(["https://accounts.google.com"]);
   });
+
+  it("R10: OAUTH_PROXY_ENABLED=true makes authorization_servers point to self (proxy mode)", async () => {
+    process.env.OAUTH_PROXY_ENABLED = "true";
+    process.env.OIDC_PRESET = "google"; // would normally route to accounts.google.com — must be overridden
+    delete process.env.OIDC_ISSUERS;
+
+    const { protectedResourceHandler } = await import("../../../src/auth/protected-resource.js");
+
+    const req = {
+      headers: { host: "mcp.example.com", "x-forwarded-proto": "https" },
+      secure: false,
+    } as unknown as import("express").Request;
+
+    let captured: Record<string, unknown> | undefined;
+    const res = {
+      setHeader: () => res as unknown as import("express").Response,
+      status: () => res as unknown as import("express").Response,
+      json: (body: Record<string, unknown>) => {
+        captured = body;
+        return res as unknown as import("express").Response;
+      },
+    } as unknown as import("express").Response;
+
+    protectedResourceHandler(req, res);
+
+    expect(captured).toBeDefined();
+    const body = captured as Record<string, unknown>;
+    expect(body.authorization_servers).toEqual(["https://mcp.example.com"]);
+    expect((body.authorization_servers as string[]).includes("https://accounts.google.com")).toBe(false);
+
+    delete process.env.OAUTH_PROXY_ENABLED;
+  });
+
+  it("R10: OAUTH_PROXY_ENABLED=false keeps legacy issuer (no regression)", async () => {
+    process.env.OAUTH_PROXY_ENABLED = "false";
+    process.env.OIDC_PRESET = "google";
+    delete process.env.OIDC_ISSUERS;
+
+    const { protectedResourceHandler } = await import("../../../src/auth/protected-resource.js");
+
+    const req = {
+      headers: { host: "mcp.example.com", "x-forwarded-proto": "https" },
+      secure: false,
+    } as unknown as import("express").Request;
+
+    let captured: Record<string, unknown> | undefined;
+    const res = {
+      setHeader: () => res as unknown as import("express").Response,
+      status: () => res as unknown as import("express").Response,
+      json: (body: Record<string, unknown>) => {
+        captured = body;
+        return res as unknown as import("express").Response;
+      },
+    } as unknown as import("express").Response;
+
+    protectedResourceHandler(req, res);
+
+    expect(captured).toBeDefined();
+    const body = captured as Record<string, unknown>;
+    expect(body.authorization_servers).toEqual(["https://accounts.google.com"]);
+
+    delete process.env.OAUTH_PROXY_ENABLED;
+  });
 });

@@ -220,4 +220,33 @@ describe("Phase 10: oidcAuthMiddleware (R26, R27, R31)", () => {
     const messages = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(messages).toContain("alice@example");
   });
+
+  it("R7: MCP_AUTH_TOKEN path remains valid when OAUTH_PROXY_ENABLED=true", async () => {
+    process.env.OAUTH_PROXY_ENABLED = "true";
+    process.env.MCP_AUTH_TOKEN = "service-token";
+
+    const req = makeReq({ authorization: "Bearer service-token" });
+    const res = makeRes();
+    const next = jest.fn();
+
+    await oidcAuthMiddleware(req as never, res as never, next as never);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.user?.provider).toBe("mcp_auth_token");
+    expect(req.user?.sub).toBe("service-account");
+  });
+
+  it("R8: OAUTH_PROXY_ENABLED unset keeps middleware behaviour byte-identical with v2.0.0", async () => {
+    delete process.env.OAUTH_PROXY_ENABLED;
+    process.env.MCP_AUTH_TOKEN = "service-token";
+
+    const req = makeReq({ authorization: "Bearer service-token" });
+    const res = makeRes();
+    const next = jest.fn();
+
+    await oidcAuthMiddleware(req as never, res as never, next as never);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.user?.provider).toBe("mcp_auth_token");
+  });
 });

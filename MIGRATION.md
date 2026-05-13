@@ -105,3 +105,101 @@ If neither `OIDC_ISSUERS` nor `MCP_AUTH_TOKEN` is set, the server logs a dev war
 - **`GeminiProvider: GEMINI_API_KEY is required`** — Add `GEMINI_API_KEY` to `.env`.
 - **`401 Unauthorized` with `WWW-Authenticate: ..., error="invalid_token"`** — Verify the token's `iss`/`aud`/`exp` match the server configuration.
 - **Reranker calls appear ignored** — Confirm `RERANKER_API_BASE` is set and `rerank: true` is passed in the query arguments. Reranker is fail-soft; outages never break query requests.
+
+---
+
+## 한국어 — v2.0 → v2.1
+
+### 한 줄 요약
+
+v2.1 은 Google IdP 와 호환되는 **내장 OAuth 2.1 Authorization Server proxy** 를 추가합니다. Claude Desktop / Claude.ai Connectors 처럼 RFC 7591 Dynamic Client Registration 을 시도하는 클라이언트가 별도 client_id 입력 없이 동작합니다.
+
+### 1. 활성화 여부 결정
+
+- **기존 동작 유지**: `OAUTH_PROXY_ENABLED` 미설정. v2.0 동작과 완전히 동일.
+- **Google OAuth proxy 활성화**: `OAUTH_PROXY_ENABLED=true` + Google credentials 추가.
+
+활성 시:
+- `/.well-known/oauth-protected-resource` 의 `authorization_servers` 가 server 자체 URL 로 변경됩니다 (Google 이 아닌).
+- 신규 endpoint 5개 노출: `/oauth/{register,authorize,callback,token}`, `/.well-known/oauth-authorization-server`.
+
+### 2. Google Cloud Console 설정
+
+1. https://console.cloud.google.com/apis/credentials → OAuth 2.0 Client ID 생성 (Web application).
+2. **Authorized redirect URIs** 에 다음을 등록:
+   - `https://<your-mcp-server>/oauth/callback`
+3. 발급된 **Client ID** + **Client Secret** 을 `.env` 에 추가:
+   ```
+   OAUTH_PROXY_ENABLED=true
+   GOOGLE_OAUTH_CLIENT_ID=<client-id>.apps.googleusercontent.com
+   GOOGLE_OAUTH_CLIENT_SECRET=<client-secret>
+   OIDC_AUDIENCE=<client-id>.apps.googleusercontent.com
+   OIDC_PRESET=google
+   ```
+
+### 3. 옵션 환경변수
+
+- `OAUTH_PROXY_BASE_URL` — issuer/endpoint 의 base URL override (예: 프록시가 X-Forwarded-Proto 를 안 보낼 때).
+- `OAUTH_PROXY_GOOGLE_SCOPES` — Google authorize 의 scope. 기본 `openid email profile`.
+- `OAUTH_PROXY_STORE_MAX` — 메모리 store 최대 항목 수. 기본 10000.
+
+### 4. 클라이언트 측
+
+Claude Desktop / Claude.ai Connectors 등 OAuth 2.1 DCR 지원 클라이언트는 server URL 만 입력하면 자동으로 다음 흐름이 동작합니다: 메타데이터 조회 → DCR → Google 로그인 → callback → token.
+
+`MCP_AUTH_TOKEN` 경로는 그대로 유지되며 (서비스 계정 / CI / Bearer 헤더 직접 사용 클라이언트) Google OAuth proxy 와 병용 가능합니다.
+
+### 5. 트러블슈팅
+
+- **`GOOGLE_OAUTH_CLIENT_ID is required when OAUTH_PROXY_ENABLED=true`** — `.env` 에 Google credentials 가 빠짐.
+- **Google 로그인 화면이 안 뜨고 즉시 실패** — Authorized redirect URI 가 Google Cloud Console 에 등록되지 않았음. `<self base URL>/oauth/callback` 정확히 등록.
+- **`invalid_grant` on `/oauth/token`** — code 가 만료됐거나 (TTL 10분) 이미 사용됨. 또는 `code_verifier` 가 일치하지 않음.
+
+---
+
+## English — v2.0 → v2.1
+
+### TL;DR
+
+v2.1 ships an **embedded OAuth 2.1 Authorization Server proxy** that handles Google login for clients that expect RFC 7591 Dynamic Client Registration (Claude Desktop / Claude.ai Connectors). Google itself doesn't support DCR; the proxy fills that gap.
+
+### 1. Decide whether to enable
+
+- **Keep v2.0 behaviour**: leave `OAUTH_PROXY_ENABLED` unset.
+- **Enable Google OAuth proxy**: set `OAUTH_PROXY_ENABLED=true` and supply Google credentials.
+
+When enabled:
+- `/.well-known/oauth-protected-resource` advertises *this server* as the authorization server (not `accounts.google.com`).
+- Five new endpoints become live: `/oauth/{register,authorize,callback,token}` and `/.well-known/oauth-authorization-server`.
+
+### 2. Google Cloud Console setup
+
+1. https://console.cloud.google.com/apis/credentials → create an OAuth 2.0 Client ID (Web application).
+2. Add to **Authorized redirect URIs**:
+   - `https://<your-mcp-server>/oauth/callback`
+3. Copy the issued **Client ID** + **Client Secret** to `.env`:
+   ```
+   OAUTH_PROXY_ENABLED=true
+   GOOGLE_OAUTH_CLIENT_ID=<client-id>.apps.googleusercontent.com
+   GOOGLE_OAUTH_CLIENT_SECRET=<client-secret>
+   OIDC_AUDIENCE=<client-id>.apps.googleusercontent.com
+   OIDC_PRESET=google
+   ```
+
+### 3. Optional env
+
+- `OAUTH_PROXY_BASE_URL` — override issuer/endpoint base URL (e.g., when the reverse proxy strips `X-Forwarded-Proto`).
+- `OAUTH_PROXY_GOOGLE_SCOPES` — Google authorize scope. Default `openid email profile`.
+- `OAUTH_PROXY_STORE_MAX` — per-store size cap. Default 10000.
+
+### 4. Client side
+
+Claude Desktop / Claude.ai Connectors and other DCR-aware OAuth 2.1 clients only need the server URL. They discover metadata, register dynamically, follow Google login, and exchange tokens — all automatically.
+
+`MCP_AUTH_TOKEN` (service-to-service / CI / clients that send Bearer directly) continues to work alongside the proxy.
+
+### 5. Troubleshooting
+
+- **`GOOGLE_OAUTH_CLIENT_ID is required when OAUTH_PROXY_ENABLED=true`** — Google credentials missing from `.env`.
+- **Google login screen never appears, immediate failure** — the Authorized redirect URI is not registered in Google Cloud Console. Register `<self base URL>/oauth/callback` exactly.
+- **`invalid_grant` on `/oauth/token`** — code has expired (10 min TTL) or already been used; or `code_verifier` doesn't match.

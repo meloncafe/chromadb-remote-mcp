@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-05-13
+
+### Added
+
+- **Embedded OAuth 2.1 Authorization Server proxy for Google IdP** (`OAUTH_PROXY_ENABLED=true`) — the server now exposes `/oauth/{register,authorize,callback,token}` plus `/.well-known/oauth-authorization-server` (RFC 8414), so MCP clients (Claude Desktop / Claude.ai Connectors, mcp-remote, ...) that rely on Dynamic Client Registration (RFC 7591) can authenticate against Google without a pre-issued client_id. Google itself does not support DCR; the proxy fills that gap.
+- **Dynamic Client Registration** (`POST /oauth/register`) — issues a public client_id with `token_endpoint_auth_method: "none"` and PKCE-required (R1).
+- **PKCE S256 mandatory** — `code_challenge` + `code_challenge_method=S256` are required at `/oauth/authorize`; `code_verifier` is validated at `/oauth/token` (R5).
+- **Google id_token passthrough** — `/oauth/token` returns the Google `id_token` byte-identical (no re-signing); the existing OIDC verifier validates `iss=accounts.google.com` + `aud=GOOGLE_OAUTH_CLIENT_ID` (R6).
+- **`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`** — server-side credentials used to perform the actual code → id_token exchange with Google (R3).
+- **`OAUTH_PROXY_BASE_URL`** — explicit issuer/base URL override for environments where `X-Forwarded-Proto` is stripped (E1).
+- **`OAUTH_PROXY_GOOGLE_SCOPES`** — scope override for the Google authorize redirect (default `openid email profile`) (E4).
+- **`OAUTH_PROXY_STORE_MAX`** — per-store size cap with oldest-expires-first eviction (default 10000) (E3).
+
+### Changed
+
+- **`/.well-known/oauth-protected-resource`** — when `OAUTH_PROXY_ENABLED=true`, the `authorization_servers` field now points at the MCP server itself rather than `https://accounts.google.com`. This is what makes the DCR flow work end to end. With the flag off, behaviour is byte-identical to v2.0.0 (R8, R10).
+- **`validateEnvironmentVariables`** — fails fast at boot when `OAUTH_PROXY_ENABLED=true` but `GOOGLE_OAUTH_CLIENT_ID` or `GOOGLE_OAUTH_CLIENT_SECRET` is missing (R3).
+
+### Security
+
+- **Secrets never logged** — `client_secret`, `code_verifier`, `id_token`, and `GOOGLE_OAUTH_CLIENT_SECRET` are excluded from all logging paths in the oauth-proxy module (R14).
+- **Rate limiting** — all 5 oauth-proxy endpoints sit behind the existing global `limiter`, with `Retry-After` on 429 (R13).
+- **State / code one-shot consumption** — `consumeAuthzState` and `consumeAuthzCode` remove entries on first read; replay returns `invalid_grant` / `invalid_state` (R5).
+- **In-memory TTL ≤ 10 min** — `TTL_SEC=600` for state/code/client stores (R5).
+
+### Compatibility
+
+- `OAUTH_PROXY_ENABLED` is opt-in (default off). Existing v2.0.0 deployments using `OIDC_PRESET=google` + `Authorization: Bearer <google_id_token>` (clients that handle OAuth themselves) continue to work unchanged (R7, R8).
+
 ## [2.0.0] - 2026-05-13
 
 ### Breaking changes

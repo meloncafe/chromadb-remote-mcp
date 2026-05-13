@@ -925,6 +925,79 @@ describe("index.ts", () => {
       jest.useRealTimers();
     });
 
+    it("E2: banner shows OAuth Proxy ✅ Enabled when OAUTH_PROXY_ENABLED=true", async () => {
+      const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+      mockFetch.mockResolvedValue({ ok: true, status: 200 } as Response);
+
+      jest.useFakeTimers();
+      process.env.OAUTH_PROXY_ENABLED = "true";
+      process.env.GOOGLE_OAUTH_CLIENT_ID = "test-client";
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET = "test-secret";
+      jest.resetModules();
+      const module = await import("../../src/index.js");
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+      const listenSpy = jest
+        .spyOn(module.app, "listen")
+        .mockImplementation((_port: number, callback?: (error?: Error) => void) => {
+          if (callback) callback();
+          return {} as never;
+        });
+
+      const mainPromise = module.main();
+      jest.advanceTimersByTime(10000);
+      await Promise.resolve();
+      await mainPromise;
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("OAuth Proxy:"),
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Enabled (Google passthrough)"),
+      );
+
+      consoleSpy.mockRestore();
+      listenSpy.mockRestore();
+      jest.useRealTimers();
+      delete process.env.OAUTH_PROXY_ENABLED;
+      delete process.env.GOOGLE_OAUTH_CLIENT_ID;
+      delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+    });
+
+    it("E2: banner shows OAuth Proxy ⚠️ Disabled when OAUTH_PROXY_ENABLED unset", async () => {
+      const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+      mockFetch.mockResolvedValue({ ok: true, status: 200 } as Response);
+
+      jest.useFakeTimers();
+      delete process.env.OAUTH_PROXY_ENABLED;
+      jest.resetModules();
+      const module = await import("../../src/index.js");
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+      const listenSpy = jest
+        .spyOn(module.app, "listen")
+        .mockImplementation((_port: number, callback?: (error?: Error) => void) => {
+          if (callback) callback();
+          return {} as never;
+        });
+
+      const mainPromise = module.main();
+      jest.advanceTimersByTime(10000);
+      await Promise.resolve();
+      await mainPromise;
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("OAuth Proxy:"),
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Disabled"),
+      );
+
+      consoleSpy.mockRestore();
+      listenSpy.mockRestore();
+      jest.useRealTimers();
+    });
+
   });
 
   describe("Signal handlers", () => {
