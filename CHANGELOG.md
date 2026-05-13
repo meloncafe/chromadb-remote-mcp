@@ -13,15 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Collection metadata schema v2** — All new collections persist `embedding_provider`, `embedding_model`, `embedding_dimensions` in metadata. Existing v1 collections fail with `Embedding provider mismatch` on read/write. Set `LEGACY_COLLECTION_COMPAT=true` to allow read-only access to v1 collections, or re-index per `MIGRATION.md`.
 - **Default embedding behaviour** — Previous releases silently used ChromaDB's built-in `all-MiniLM-L6-v2` (English-only, 384 dim). v2 emits a startup warning when `EMBEDDING_PROVIDER` is unset and the default is in use.
-- **Authentication** — `/mcp` and the catch-all REST proxy now go through the OIDC-aware middleware. `MCP_AUTH_TOKEN` continues to work and is now documented as a service-to-service credential; OAuth 2.1 OIDC is the recommended path for human users.
+- **Authentication — `Authorization: Bearer` only** — `/mcp` and the catch-all REST proxy now go through the OIDC-aware middleware. Previously supported `X-Chroma-Token` header and `?apiKey=` / `?token=` / `?api_key=` query-parameter auth paths are removed. `MCP_AUTH_TOKEN` continues to work as a service-to-service credential and must be sent as `Authorization: Bearer <token>`. OAuth 2.1 OIDC is the recommended path for human users.
+- **Removed env** — `ALLOW_QUERY_AUTH` is no longer read by the server; the startup banner no longer displays `Query Auth`. Existing values are silently ignored.
 
 ### Added
 
 - **Embedding provider abstraction** (`src/embedding/`) — pluggable providers selected by `EMBEDDING_PROVIDER`:
   - `chromadb-default` — built-in `all-MiniLM-L6-v2` (English-only fallback)
   - `external` — caller supplies pre-computed embeddings via tool arguments
-  - `openai_compatible` — any `/v1/embeddings` endpoint (OpenAI, Voyage, Together, Ollama, TEI, vLLM)
+  - `openai_compatible` — any `/v1/embeddings` endpoint (OpenAI, Together, Ollama, TEI, vLLM)
   - `gemini` — Google AI Studio Embedding API (`gemini-embedding-001`) with task_type split (`RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY`) and Matryoshka dimensions (768/1536/3072)
+  - `voyage` — Voyage AI `/v1/embeddings` with `input_type` query/document split and `output_dimension` (voyage-3 / voyage-3-large / voyage-3.5)
 - **External embedding mode** — `chroma_add_documents` accepts `embeddings`; `chroma_query_documents` accepts `query_embeddings`. Server validates dimensions against collection metadata.
 - **Per-collection provider override** — collection metadata with explicit `embedding_provider`/`embedding_model`/`embedding_dimensions` overrides the server default for that collection only.
 - **Confidence gating** — `chroma_query_documents` gains `min_score` (0-1); items below the similarity threshold are dropped, and a `confidence_gate: "no_confident_match"` flag is emitted when every result is filtered. Default sourced from `CONFIDENCE_THRESHOLD`.
@@ -33,7 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
-- Added `jose@^5.9.0` (JWT verification).
+- Added `jose@^6.1.3` (JWT verification).
+
+### Fixed
+
+- `docker-compose.yml` and `docker-compose.dev.yml` now propagate every v2.0.0 env var (`EMBEDDING_*`, `GEMINI_API_KEY`, `CONFIDENCE_THRESHOLD`, `RERANKER_*`, `OIDC_*`, `LEGACY_COLLECTION_COMPAT`) to the `mcp-server` container.
+- `package.json` `jose` constraint matches `yarn.lock` (`^6.1.3`); previously the lockfile resolved `6.2.2` while the manifest pinned `^5.9.0`, making `yarn install --immutable` (and therefore the Docker build) fail.
+- `chroma_query_documents` / `chroma_add_documents` short-circuit with a friendly error when the active provider is `external` but the caller passed `query_texts` / `documents` only. Previously the ChromaDB v3 client transparently default-embedded the text (384d), leaking the internal ChromaDB host and collection UUID through the dimension-mismatch error.
+- Read/write tool branches now use `chromaClient.getCollection({ name })` instead of `getOrCreateCollection(...)`. v1.x silently created orphan collections with server-default v2 metadata when callers asked to read or write to a non-existent collection.
+- `WWW-Authenticate` header's `error_description` parameter and the JSON body's `error_description` field now carry the same text. Previously the header transformed inner `"` to `'`, producing two different strings for the same error.
 
 ## [1.0.2] - 2025-10-31
 - fix(security): configure CodeQL to suppress log injection warnings [#d7365c1](https://github.com/meloncafe/chromadb-remote-mcp/commit/d7365c16498bc0856b2e7728c8a399f6dee4844d)

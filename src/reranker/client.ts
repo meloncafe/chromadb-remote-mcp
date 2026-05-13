@@ -19,8 +19,11 @@ export interface RerankResponse {
   reranked: boolean;
 }
 
-interface CohereLikeResult {
-  results: Array<{ index: number; relevance_score: number }>;
+interface RerankerResult {
+  // Cohere-style top-level key
+  results?: Array<{ index: number; relevance_score: number }>;
+  // Voyage-style top-level key
+  data?: Array<{ index: number; relevance_score: number }>;
 }
 
 /**
@@ -75,13 +78,20 @@ export async function rerank(
       return identityRanking(candidates, topK);
     }
 
-    const json = (await response.json()) as CohereLikeResult;
-    if (!json || !Array.isArray(json.results)) {
-      console.warn("Reranker returned unexpected shape — returning original order.");
+    const json = (await response.json()) as RerankerResult;
+    const list = Array.isArray(json?.results)
+      ? json.results
+      : Array.isArray(json?.data)
+        ? json.data
+        : null;
+    if (!list) {
+      console.warn(
+        "Reranker returned unexpected shape (expected 'results' or 'data' array) — returning original order.",
+      );
       return identityRanking(candidates, topK);
     }
 
-    const indices = json.results
+    const indices = list
       .filter((r) => Number.isInteger(r.index) && r.index >= 0 && r.index < candidates.length)
       .slice(0, topK)
       .map((r) => r.index);

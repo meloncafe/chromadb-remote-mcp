@@ -80,7 +80,11 @@ function handleLegacyCompat(
  * chromadb-default → ChromaDB embeds internally; external → caller pre-computes.
  */
 function shouldServerEmbed(providerId: string): boolean {
-  return providerId === "openai_compatible" || providerId === "gemini";
+  return (
+    providerId === "openai_compatible" ||
+    providerId === "gemini" ||
+    providerId === "voyage"
+  );
 }
 
 export function validateEmbeddingDimensions(
@@ -663,10 +667,7 @@ export async function handleChromaTool(
       }
 
       case "chroma_peek_collection": {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
@@ -684,10 +685,7 @@ export async function handleChromaTool(
       }
 
       case "chroma_get_collection_info": {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
@@ -713,10 +711,7 @@ export async function handleChromaTool(
       }
 
       case "chroma_get_collection_count": {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
@@ -746,10 +741,7 @@ export async function handleChromaTool(
       }
 
       case "chroma_add_documents": {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
@@ -770,6 +762,23 @@ export async function handleChromaTool(
           if (dimError) {
             return { content: [{ type: "text", text: dimError }] };
           }
+        }
+
+        const effectiveProviderId =
+          (collection.metadata?.embedding_provider as string | undefined) ||
+          serverProviderCfg.provider;
+        if (effectiveProviderId === "external" && hasDocuments && !hasEmbeddings) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "Error: External embedding mode requires pre-computed embeddings. " +
+                  "Pass the 'embeddings' argument (a 2D float array sized to the collection's embedding_dimensions) " +
+                  "instead of 'documents' only.",
+              },
+            ],
+          };
         }
 
         const collectionCfg = resolveProviderConfigForCollection(
@@ -805,10 +814,7 @@ export async function handleChromaTool(
       }
 
       case "chroma_query_documents": {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
@@ -832,6 +838,23 @@ export async function handleChromaTool(
           if (dimError) {
             return { content: [{ type: "text", text: dimError }] };
           }
+        }
+
+        const effectiveProviderIdQ =
+          (collection.metadata?.embedding_provider as string | undefined) ||
+          serverProviderCfg.provider;
+        if (effectiveProviderIdQ === "external" && hasQueryTexts && !hasQueryEmbeddings) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "Error: External embedding mode requires pre-computed query embeddings. " +
+                  "Pass the 'query_embeddings' argument (a 2D float array sized to the collection's embedding_dimensions) " +
+                  "instead of 'query_texts'.",
+              },
+            ],
+          };
         }
 
         const collectionCfgQ = resolveProviderConfigForCollection(
@@ -919,10 +942,7 @@ export async function handleChromaTool(
       }
 
       case "chroma_get_documents": {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
@@ -977,10 +997,7 @@ export async function handleChromaTool(
       }
 
       case "chroma_update_documents": {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
@@ -1014,10 +1031,7 @@ export async function handleChromaTool(
           };
         }
 
-        const collection = await chromaClient.getOrCreateCollection({
-          name: args.collection_name,
-          metadata: buildCollectionMetadata(serverProviderCfg),
-        });
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {

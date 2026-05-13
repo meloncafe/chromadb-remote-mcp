@@ -36,6 +36,27 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - NODE_NO_WARNINGS=1
       - ORT_LOGGING_LEVEL=3
+      # v2.0.0: Embedding provider
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS}
+      - EMBEDDING_API_BASE=${EMBEDDING_API_BASE}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # v2.0.0: Confidence gating
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD}
+      # v2.0.0: Reranker (fail-soft)
+      - RERANKER_API_BASE=${RERANKER_API_BASE}
+      - RERANKER_API_KEY=${RERANKER_API_KEY}
+      - RERANKER_MODEL=${RERANKER_MODEL}
+      # v2.0.0: OAuth 2.1 OIDC multi-provider
+      - OIDC_ISSUERS=${OIDC_ISSUERS}
+      - OIDC_PRESET=${OIDC_PRESET}
+      - OIDC_AUDIENCE=${OIDC_AUDIENCE}
+      - OIDC_SCOPES=${OIDC_SCOPES}
+      - OIDC_LOG_SUB_MODE=${OIDC_LOG_SUB_MODE}
+      # v2.0.0: Legacy v1 collection compat
+      - LEGACY_COLLECTION_COMPAT=${LEGACY_COLLECTION_COMPAT}
     depends_on:
       - chromadb
     networks:

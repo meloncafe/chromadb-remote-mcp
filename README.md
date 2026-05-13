@@ -233,7 +233,6 @@ cp .env.example .env
 | `CHROMA_AUTH_TOKEN` | ChromaDB auth token (if ChromaDB requires auth)                      | -                  | No                          |
 | `RATE_LIMIT_MAX`    | Max requests per IP per 15 minutes                                   | `100`              | No                          |
 | `ALLOWED_ORIGINS`   | Comma-separated list of allowed origins (DNS rebinding protection)   | -                  | No                          |
-| `ALLOW_QUERY_AUTH`  | Enable authentication via query parameters (`?apiKey=TOKEN`)         | `true`             | No                          |
 
 ### Authentication
 
@@ -262,25 +261,22 @@ docker compose restart
 # or: docker-compose restart
 ```
 
-**Supported authentication methods:**
+**Supported authentication methods (v2.0.0):**
 
-1. **Authorization Header** (Most Secure): `Authorization: Bearer TOKEN`
+1. **`Authorization: Bearer TOKEN`** — only supported way to send `MCP_AUTH_TOKEN`.
 
-   - Recommended for API clients and automated tools
-   - Compliant with MCP specification
-   - Example: `curl -H "Authorization: Bearer YOUR_TOKEN"`
+   - Recommended for service-to-service callers (API clients, scripts, MCP relays).
+   - Compliant with MCP specification.
+   - Example: `curl -H "Authorization: Bearer YOUR_TOKEN" https://your-server.com/mcp`
 
-2. **X-Chroma-Token Header**: `X-Chroma-Token: TOKEN`
+2. **OAuth 2.1 / OpenID Connect** — recommended for human users.
 
-   - For ChromaDB Python/JavaScript libraries
-   - Compatible with ChromaDB client SDKs
-   - Example: `client = chromadb.HttpClient(headers={"X-Chroma-Token": "TOKEN"})`
+   - Set `OIDC_ISSUERS` (comma-separated issuer URLs) or `OIDC_PRESET=google,github,microsoft`.
+   - Set `OIDC_AUDIENCE` to the resource identifier (typically your MCP server's public URL).
+   - The server publishes RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`.
+   - 401 responses include `WWW-Authenticate: Bearer error="...", resource_metadata="..."` per RFC 6750.
 
-3. **Query Parameter** (Default Enabled): `?apiKey=TOKEN`
-   - **Required for Claude Desktop Custom Connector**
-   - Enables browser-based integrations
-   - Enabled by default (`ALLOW_QUERY_AUTH=true`)
-   - Set `ALLOW_QUERY_AUTH=false` to disable if not needed
+> **Removed in v2.0.0:** `X-Chroma-Token` header and `?apiKey=` / `?token=` / `?api_key=` query-parameter auth are no longer accepted. Clients that previously used those paths must migrate to `Authorization: Bearer`. The `ALLOW_QUERY_AUTH` env var is ignored.
 
 ### Origin Header Validation (DNS Rebinding Protection)
 
@@ -361,7 +357,7 @@ docker compose restart
 2. Click "Add Custom Server"
 3. Enter:
    - **Name**: `ChromaDB`
-   - **URL**: `https://your-server.com/mcp?apiKey=YOUR_TOKEN`
+   - **URL**: `https://your-server.com/mcp` (set `Authorization: Bearer YOUR_TOKEN` in the connector's header config)
 
 > **Note**: Custom connector automatically syncs to the mobile app. Authentication is mandatory for remote access.
 
@@ -381,7 +377,7 @@ If you don't have access to Custom Connectors, use the `mcp-remote` package as a
   "mcpServers": {
     "chromadb": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://your-server.com/mcp?apiKey=YOUR_TOKEN"]
+      "args": ["-y", "mcp-remote", "https://your-server.com/mcp", "--header", "Authorization: Bearer YOUR_TOKEN"]
     }
   }
 }
@@ -400,7 +396,8 @@ Restart Claude Desktop after editing the file.
 claude mcp add --transport http chromadb https://your-server.com/mcp
 
 # With authentication (Query Parameter - Recommended)
-claude mcp add --transport http chromadb https://your-server.com/mcp?apiKey=YOUR_TOKEN
+claude mcp add --transport http chromadb https://your-server.com/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
 
 # With authentication (Header)
 claude mcp add --transport http chromadb https://your-server.com/mcp \
@@ -450,7 +447,7 @@ client = chromadb.HttpClient(
     port=443,
     ssl=True,
     headers={
-        "X-Chroma-Token": "YOUR_TOKEN"
+        "Authorization": "Bearer YOUR_TOKEN"
     }
 )
 
@@ -460,7 +457,7 @@ client = chromadb.HttpClient(
     port=8080,
     ssl=False,
     headers={
-        "X-Chroma-Token": "YOUR_TOKEN"
+        "Authorization": "Bearer YOUR_TOKEN"
     }
 )
 
@@ -649,17 +646,18 @@ curl -X POST https://your-server.com/mcp \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 
-# MCP endpoint (Query parameter)
-curl -X POST "https://your-server.com/mcp?apiKey=YOUR_TOKEN" \
+# MCP endpoint (Bearer token)
+curl -X POST "https://your-server.com/mcp" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 
 # ChromaDB REST API
 curl https://your-server.com/api/v2/heartbeat \
-  -H "X-Chroma-Token: YOUR_TOKEN"
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # Swagger UI (browser)
-https://your-server.com/docs?apiKey=YOUR_TOKEN
+https://your-server.com/docs  # send Authorization: Bearer YOUR_TOKEN header
 ```
 
 ---
@@ -795,7 +793,7 @@ yarn test:keep
 **Integration Test Coverage:**
 
 - ✅ Health check endpoint
-- ✅ Authentication (Bearer token, X-Chroma-Token, query parameter)
+- ✅ Authentication (`Authorization: Bearer` MCP_AUTH_TOKEN; OAuth 2.1 / OIDC multi-provider)
 - ✅ MCP protocol (tools/list, tools/call)
 - ✅ ChromaDB REST API proxy
 - ✅ Collection CRUD operations
@@ -991,11 +989,11 @@ If you encounter any issues or have questions, please [open an issue](https://gi
 
 | Variable | Purpose |
 |----------|---------|
-| `EMBEDDING_PROVIDER` | `chromadb-default` (English-only, default) / `external` / `openai_compatible` / `gemini` |
+| `EMBEDDING_PROVIDER` | `chromadb-default` (English-only, default) / `external` / `openai_compatible` / `gemini` / `voyage` |
 | `EMBEDDING_MODEL` | Provider-specific model id. Stored in collection metadata. |
 | `EMBEDDING_DIMENSIONS` | Vector dimensions. Required for external mode; Gemini accepts 768/1536/3072. |
 | `EMBEDDING_API_BASE` | OpenAI-compatible endpoint base URL (Ollama / TEI / Voyage / Together / vLLM). |
-| `EMBEDDING_API_KEY` | Optional bearer key for `openai_compatible`. |
+| `EMBEDDING_API_KEY` | Bearer key for `openai_compatible` or `voyage` providers. |
 | `GEMINI_API_KEY` | Google AI Studio API key for the `gemini` provider. |
 | `CONFIDENCE_THRESHOLD` | Default `min_score` (0-1). Tool argument has priority. |
 | `RERANKER_API_BASE` | OpenAI-compatible `/rerank` endpoint. Reranker is fail-soft. |
@@ -1008,6 +1006,23 @@ If you encounter any issues or have questions, please [open an issue](https://gi
 | `OIDC_LOG_SUB_MODE` | `full` for raw `sub`, otherwise SHA-256 first 12 chars (default). |
 | `MCP_AUTH_TOKEN` | **Service-to-service / CI / internal scripts only.** Use OAuth for human users. Coexists with OIDC — either method accepts. |
 | `LEGACY_COLLECTION_COMPAT` | `true` to allow read-only access to legacy v1 collections. Writes are still rejected. |
+
+### Recommended embedding + reranker combinations
+
+Verified locally on Korean RAG workloads (2026-05). Pick by priority:
+
+| Priority | Embedding | Reranker | Why |
+|----------|-----------|----------|-----|
+| Accuracy first (recommended) | `gemini` / `gemini-embedding-001` / 1536d | `cohere` / `rerank-multilingual-v3.0` | Gemini emits asymmetric query↔document vectors (`RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, self-distance ≈ 0.21 in our test); Cohere reorders short KR question↔answer pairs cleanly. |
+| Cost-balanced | `voyage` / `voyage-3` / 1024d | `cohere` / `rerank-multilingual-v3.0` | Voyage embeddings are ~1/2.5 the cost of Gemini and still asymmetric (`input_type` query/document, self-distance ≈ 0.56). |
+| Minimum embedding cost | `openai_compatible` / `text-embedding-3-small` / 1536d | `cohere` / `rerank-multilingual-v3.0` | Cheapest hosted embedding; symmetric vectors are weaker on short KR queries, so the reranker is essential. |
+| Self-hosted / offline | `openai_compatible` (Ollama / TEI / vLLM) | TEI `bge-reranker-v2-m3` or similar | No external API; latency depends on local hardware. |
+
+Notes from the verification run:
+
+- Voyage `rerank-2` did NOT reorder the short KR question↔answer pair used in this test — keep Cohere as the rerank default for KR until your own corpus shows otherwise.
+- The reranker layer is fail-soft: leave `RERANKER_API_BASE` unset to disable reranking without code changes.
+- Set `CONFIDENCE_THRESHOLD` (or per-call `min_score`) to drop low-similarity hits; the server emits `confidence_gate: "no_confident_match"` when every result is filtered.
 
 ### Docker Compose snippet (Gemini + Google OAuth)
 

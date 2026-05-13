@@ -27,10 +27,13 @@ function sendUnauthorized(
 ): void {
   const base = resolveResourceBaseUrl(req);
   const metadataUrl = `${base}/.well-known/oauth-protected-resource`;
+  // RFC 7235 quoted-string: backslash-escape backslashes first, then inner
+  // double quotes. This keeps the description text identical between the
+  // WWW-Authenticate header and the JSON body's error_description.
   const params: string[] = [
     'realm="MCP Server"',
     `error="${error}"`,
-    `error_description="${description.replace(/"/g, "'")}"`,
+    `error_description="${description.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
     `resource_metadata="${metadataUrl}"`,
     'charset="UTF-8"',
   ];

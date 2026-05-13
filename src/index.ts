@@ -235,18 +235,6 @@ export function validateEnvironmentVariables() {
     }
   }
 
-  if (process.env.ALLOW_QUERY_AUTH && !["true", "false"].includes(process.env.ALLOW_QUERY_AUTH)) {
-    warnings.push(
-      `⚠️  Invalid ALLOW_QUERY_AUTH: ${process.env.ALLOW_QUERY_AUTH} (must be 'true' or 'false', defaulting to false)`,
-    );
-  }
-
-  if (isProduction && process.env.ALLOW_QUERY_AUTH === "true") {
-    warnings.push(
-      "⚠️  ALLOW_QUERY_AUTH=true in production violates MCP spec (MUST NOT) - consider using Authorization header",
-    );
-  }
-
   warnings.forEach((warning) => console.warn(warning));
 
   if (errors.length > 0) {
@@ -1285,96 +1273,7 @@ export function validateOriginHeader(
   });
 }
 
-// Optional Authentication Middleware (supports multiple auth methods)
-export const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
-
-// Factory function for creating auth middleware (testable)
-export function createAuthMiddleware(authToken?: string) {
-  return function authenticate(
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction,
-  ) {
-    // Skip auth if authToken is not set
-    if (!authToken) {
-      return next();
-    }
-
-    let providedToken: string | undefined;
-
-    // Method 1: Authorization header (RECOMMENDED - MCP spec compliant)
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-      providedToken = authHeader.substring(7); // Remove 'Bearer ' prefix
-    }
-
-    // Method 2: X-Chroma-Token header (RECOMMENDED - ChromaDB compatibility)
-    if (!providedToken) {
-      providedToken = req.headers["x-chroma-token"] as string;
-    }
-
-    // Method 3: Query parameter (DEPRECATED - MCP spec violation: MUST NOT)
-    // Only enabled if ALLOW_QUERY_AUTH=true environment variable is set
-    if (!providedToken && process.env.ALLOW_QUERY_AUTH === "true") {
-      providedToken =
-        (req.query.apiKey as string) ||
-        (req.query.token as string) ||
-        (req.query.api_key as string);
-
-      if (providedToken) {
-        logWarn(
-          "⚠️  Query parameter authentication is DEPRECATED and violates MCP spec (MUST NOT). Use Authorization header instead.",
-        );
-      }
-    }
-
-    // No token provided - Return 401 with WWW-Authenticate header (MCP spec: MUST)
-    if (!providedToken) {
-      res.setHeader("WWW-Authenticate", 'Bearer realm="MCP Server", charset="UTF-8"');
-      return res.status(401).json({
-        error:
-          "Unauthorized: Missing authentication. Provide token via Authorization header or X-Chroma-Token header",
-      });
-    }
-
-    // Validate token using constant-time comparison to prevent timing attacks
-    try {
-      const providedBuffer = Buffer.from(providedToken);
-      const expectedBuffer = Buffer.from(authToken);
-
-      // If lengths differ, still perform comparison to prevent timing attacks
-      if (providedBuffer.length !== expectedBuffer.length) {
-        res.setHeader(
-          "WWW-Authenticate",
-          'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
-        );
-        return res.status(401).json({error: "Unauthorized: Invalid token"});
-      }
-
-      // Use constant-time comparison
-      if (!timingSafeEqual(providedBuffer, expectedBuffer)) {
-        res.setHeader(
-          "WWW-Authenticate",
-          'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
-        );
-        return res.status(401).json({error: "Unauthorized: Invalid token"});
-      }
-    } catch (_error) {
-      // If any error occurs during comparison, deny access
-      res.setHeader(
-        "WWW-Authenticate",
-        'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
-      );
-      return res.status(401).json({error: "Unauthorized: Invalid token"});
-    }
-
-    // Token is valid
-    return next();
-  };
-}
-
-// Default middleware instance using environment variable
-export const authenticateMCP = createAuthMiddleware(MCP_AUTH_TOKEN);
+const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
 
 // Close handler for MCP requests - exported for testing
 export function createCloseHandler(server: Closeable, transport: Closeable) {
@@ -1546,7 +1445,6 @@ export function getConfigStatus(): {
   requestTimeout: string;
   pingTimeout: string;
   logLevel: string;
-  allowQueryAuth: string;
   chromaTenant: string;
   chromaDatabase: string;
 } {
@@ -1566,7 +1464,6 @@ export function getConfigStatus(): {
       "s",
     ),
     logLevel: formatConfigValue(process.env.LOG_LEVEL, "info"),
-    allowQueryAuth: formatConfigValue(process.env.ALLOW_QUERY_AUTH, "true"),
     chromaTenant: formatConfigValue(process.env.CHROMA_TENANT, "default_tenant"),
     chromaDatabase: formatConfigValue(process.env.CHROMA_DATABASE, "default_database"),
   };
@@ -1604,7 +1501,6 @@ export async function main() {
 
 🔐 Security
    Auth Token:   ${MCP_AUTH_TOKEN ? "✅ Enabled" : "⚠️  DISABLED (not recommended for production)"}
-   Query Auth:   ${config.allowQueryAuth}
    Rate Limit:   ${config.rateLimit}
 
 ⚙️  Configuration

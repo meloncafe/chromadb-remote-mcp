@@ -233,7 +233,6 @@ cp .env.example .env
 | `CHROMA_AUTH_TOKEN` | ChromaDB 인증 토큰 (ChromaDB에서 인증이 필요한 경우)            | -                  | 아니오                |
 | `RATE_LIMIT_MAX`    | IP당 15분당 최대 요청 수                                        | `100`              | 아니오                |
 | `ALLOWED_ORIGINS`   | 허용된 origin 목록 (쉼표로 구분, DNS rebinding 방어)            | -                  | 아니오                |
-| `ALLOW_QUERY_AUTH`  | 쿼리 파라미터 인증 활성화 (`?apiKey=TOKEN`)                     | `true`             | 아니오                |
 
 ### 인증
 
@@ -262,25 +261,22 @@ docker compose restart
 # 또는: docker-compose restart
 ```
 
-**지원되는 인증 방식:**
+**지원되는 인증 방법 (v2.0.0):**
 
-1. **Authorization 헤더** (가장 안전함): `Authorization: Bearer TOKEN`
+1. **`Authorization: Bearer TOKEN`** — `MCP_AUTH_TOKEN` 을 보내는 유일한 방법.
 
-   - API 클라이언트 및 자동화 도구에 권장
-   - MCP 사양 준수
-   - 예시: `curl -H "Authorization: Bearer YOUR_TOKEN"`
+   - 서비스 간 호출 (API 클라이언트, 스크립트, MCP 릴레이) 에 권장.
+   - MCP 스펙 준수.
+   - 예: `curl -H "Authorization: Bearer YOUR_TOKEN" https://your-server.com/mcp`
 
-2. **X-Chroma-Token 헤더**: `X-Chroma-Token: TOKEN`
+2. **OAuth 2.1 / OpenID Connect** — 사용자 인증에 권장.
 
-   - ChromaDB Python/JavaScript 라이브러리용
-   - ChromaDB 클라이언트 SDK와 호환
-   - 예시: `client = chromadb.HttpClient(headers={"X-Chroma-Token": "TOKEN"})`
+   - `OIDC_ISSUERS` (콤마 구분 issuer URL) 또는 `OIDC_PRESET=google,github,microsoft` 설정.
+   - `OIDC_AUDIENCE` 에 리소스 식별자 (보통 MCP 서버의 공개 URL) 지정.
+   - 서버가 `/.well-known/oauth-protected-resource` 에서 RFC 9728 Protected Resource Metadata 제공.
+   - 401 응답에는 RFC 6750 에 따라 `WWW-Authenticate: Bearer error="...", resource_metadata="..."` 포함.
 
-3. **Query Parameter** (기본 활성화): `?apiKey=TOKEN`
-   - **Claude Desktop Custom Connector에 필수**
-   - 브라우저 기반 통합 지원
-   - 기본적으로 활성화됨 (`ALLOW_QUERY_AUTH=true`)
-   - 필요하지 않은 경우 `ALLOW_QUERY_AUTH=false`로 비활성화 가능
+> **v2.0.0 에서 제거:** `X-Chroma-Token` 헤더와 `?apiKey=` / `?token=` / `?api_key=` 쿼리 파라미터 인증은 더 이상 받지 않습니다. 기존 클라이언트는 `Authorization: Bearer` 로 마이그레이션 필요. `ALLOW_QUERY_AUTH` 환경변수는 무시됩니다.
 
 ### Origin 헤더 검증 (DNS Rebinding 방어)
 
@@ -361,7 +357,7 @@ docker compose restart
 2. "Add Custom Server" 클릭
 3. 입력:
    - **Name**: `ChromaDB`
-   - **URL**: `https://your-server.com/mcp?apiKey=YOUR_TOKEN`
+   - **URL**: `https://your-server.com/mcp` (커넥터 헤더 설정에 `Authorization: Bearer YOUR_TOKEN` 추가)
 
 > **참고**: Custom connector는 모바일 앱에 자동으로 동기화됩니다. 원격 접근 시 인증이 필수입니다.
 
@@ -381,7 +377,7 @@ Custom Connector 접근 권한이 없는 경우 `mcp-remote` 패키지를 사용
   "mcpServers": {
     "chromadb": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://your-server.com/mcp?apiKey=YOUR_TOKEN"]
+      "args": ["-y", "mcp-remote", "https://your-server.com/mcp", "--header", "Authorization: Bearer YOUR_TOKEN"]
     }
   }
 }
@@ -399,8 +395,9 @@ Custom Connector 접근 권한이 없는 경우 `mcp-remote` 패키지를 사용
 # 인증 없이
 claude mcp add --transport http chromadb https://your-server.com/mcp
 
-# 인증 포함 (Query Parameter - 권장)
-claude mcp add --transport http chromadb https://your-server.com/mcp?apiKey=YOUR_TOKEN
+# 인증 포함 (Header - 권장)
+claude mcp add --transport http chromadb https://your-server.com/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
 
 # 인증 포함 (Header)
 claude mcp add --transport http chromadb https://your-server.com/mcp \
@@ -450,7 +447,7 @@ client = chromadb.HttpClient(
     port=443,
     ssl=True,
     headers={
-        "X-Chroma-Token": "YOUR_TOKEN"
+        "Authorization": "Bearer YOUR_TOKEN"
     }
 )
 
@@ -460,7 +457,7 @@ client = chromadb.HttpClient(
     port=8080,
     ssl=False,
     headers={
-        "X-Chroma-Token": "YOUR_TOKEN"
+        "Authorization": "Bearer YOUR_TOKEN"
     }
 )
 
@@ -649,17 +646,18 @@ curl -X POST https://your-server.com/mcp \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 
-# MCP 엔드포인트 (Query parameter)
-curl -X POST "https://your-server.com/mcp?apiKey=YOUR_TOKEN" \
+# MCP 엔드포인트 (Bearer 토큰)
+curl -X POST "https://your-server.com/mcp" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 
 # ChromaDB REST API
 curl https://your-server.com/api/v2/heartbeat \
-  -H "X-Chroma-Token: YOUR_TOKEN"
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # Swagger UI (브라우저)
-https://your-server.com/docs?apiKey=YOUR_TOKEN
+https://your-server.com/docs  # Authorization: Bearer YOUR_TOKEN 헤더 필요
 ```
 
 ---
@@ -795,7 +793,7 @@ yarn test:keep
 **통합 테스트 커버리지:**
 
 - ✅ 헬스 체크 엔드포인트
-- ✅ 인증 (Bearer 토큰, X-Chroma-Token, 쿼리 파라미터)
+- ✅ 인증 (`Authorization: Bearer` MCP_AUTH_TOKEN; OAuth 2.1 / OIDC 다중 프로바이더)
 - ✅ MCP 프로토콜 (tools/list, tools/call)
 - ✅ ChromaDB REST API 프록시
 - ✅ 컬렉션 CRUD 작업
@@ -991,11 +989,11 @@ chromadb-remote-mcp/
 
 | 변수 | 용도 |
 |------|------|
-| `EMBEDDING_PROVIDER` | `chromadb-default` (영어 전용, 기본) / `external` / `openai_compatible` / `gemini` |
+| `EMBEDDING_PROVIDER` | `chromadb-default` (영어 전용, 기본) / `external` / `openai_compatible` / `gemini` / `voyage` |
 | `EMBEDDING_MODEL` | provider 별 모델 식별자. 컬렉션 metadata 에 저장됨. |
 | `EMBEDDING_DIMENSIONS` | 벡터 차원. external 모드 필수. Gemini 는 768/1536/3072. |
 | `EMBEDDING_API_BASE` | OpenAI 호환 endpoint base URL (Ollama / TEI / Voyage / Together / vLLM). |
-| `EMBEDDING_API_KEY` | `openai_compatible` 옵션 Bearer 키. |
+| `EMBEDDING_API_KEY` | `openai_compatible` / `voyage` provider 용 Bearer 키. |
 | `GEMINI_API_KEY` | `gemini` provider 용 Google AI Studio API key. |
 | `CONFIDENCE_THRESHOLD` | 기본 `min_score` (0-1). tool 인자가 우선. |
 | `RERANKER_API_BASE` | OpenAI 호환 `/rerank` endpoint. 실패해도 query 진행 (fail-soft). |
@@ -1008,6 +1006,23 @@ chromadb-remote-mcp/
 | `OIDC_LOG_SUB_MODE` | `full` 시 raw `sub`, 기본은 SHA-256 앞 12자. |
 | `MCP_AUTH_TOKEN` | **서비스간 / CI / 내부 스크립트 전용.** 사람 사용자는 OAuth 사용 권장. OAuth 와 공존. |
 | `LEGACY_COLLECTION_COMPAT` | `true` 설정 시 v1 컬렉션 읽기만 허용. 쓰기는 여전히 거부. |
+
+### 추천 임베딩 + 리랭커 조합
+
+한국어 RAG 워크로드 로컬 검증 결과 (2026-05). 우선순위별:
+
+| 우선순위 | 임베딩 | 리랭커 | 선택 이유 |
+|----------|--------|--------|----------|
+| 정확도 최우선 (추천) | `gemini` / `gemini-embedding-001` / 1536d | `cohere` / `rerank-multilingual-v3.0` | Gemini 는 query↔document 비대칭 벡터 생성 (`RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, 검증에서 self-distance ≈ 0.21). Cohere 가 짧은 한국어 질문↔정답 쌍을 명확하게 reorder. |
+| 비용 균형 | `voyage` / `voyage-3` / 1024d | `cohere` / `rerank-multilingual-v3.0` | Voyage 임베딩이 Gemini 대비 약 1/2.5 비용. 여전히 비대칭 (`input_type` query/document, self-distance ≈ 0.56). |
+| 임베딩 비용 최저 | `openai_compatible` / `text-embedding-3-small` / 1536d | `cohere` / `rerank-multilingual-v3.0` | 가장 저렴한 호스팅 임베딩. 대칭 벡터라 짧은 한국어 질의에는 약함 → 리랭커가 필수. |
+| 자체 호스팅 / 오프라인 | `openai_compatible` (Ollama / TEI / vLLM) | TEI `bge-reranker-v2-m3` 등 | 외부 API 없음. 지연시간은 로컬 하드웨어에 의존. |
+
+검증에서 관찰된 사항:
+
+- Voyage `rerank-2` 는 이번 테스트의 짧은 한국어 질문↔정답 쌍을 reorder 하지 않았음 — 한국어 기본값은 Cohere 권장. 본인 코퍼스로 별도 평가 필요.
+- 리랭커 계층은 fail-soft: `RERANKER_API_BASE` 미설정 시 코드 변경 없이 리랭킹 비활성화.
+- `CONFIDENCE_THRESHOLD` (또는 호출별 `min_score`) 로 낮은 유사도 결과 필터. 전부 필터되면 서버가 `confidence_gate: "no_confident_match"` 응답에 추가.
 
 ### Docker Compose 예제 (Gemini + Google OAuth)
 
