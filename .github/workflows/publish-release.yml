@@ -172,32 +172,104 @@ jobs:
   #         echo "✅ Successfully published to MCP Registry!"
 
   # ============================================
-  # Job 4: Release Summary
+  # Job 4: GitHub Release
   # ============================================
-  release-summary:
-    name: Release Summary
+  github-release:
+    name: GitHub Release
     runs-on: [self-hosted, Linux, X64, hetzner-x64]
     needs: docker-publish
-    if: always()
+    permissions:
+      contents: write
 
     steps:
-      - name: Generate release summary
-        run: |
-          VERSION=${{ needs.docker-publish.outputs.version }}
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version_tag || github.ref }}
+          fetch-depth: 0
 
-          echo "## 🎉 Release $VERSION Published Successfully!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Docker Images" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.DOCKER_IMAGE }}:$VERSION\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.DOCKER_IMAGE }}:latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
-          echo "- [Docker Hub](https://hub.docker.com/r/${{ env.DOCKER_IMAGE }})" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📥 Installation" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.DOCKER_IMAGE }}:$VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ⚠️ Note" >> $GITHUB_STEP_SUMMARY
-          echo "MCP Registry publication is currently disabled (in development)" >> $GITHUB_STEP_SUMMARY
+      - name: Extract changelog section for this version
+        id: changelog
+        env:
+          VERSION: ${{ needs.docker-publish.outputs.version }}
+        run: |
+          # Extract the `## [VERSION] - DATE` section up to the next `## [` heading.
+          # If no section is found, fall back to a generic body.
+          SECTION=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag = 1; next }
+            flag && $0 ~ "^## \\[" { flag = 0 }
+            flag { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$SECTION" ]; then
+            echo "::warning::No CHANGELOG section found for v$VERSION — using fallback body"
+            SECTION="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/v${VERSION}/CHANGELOG.md) for details."
+          fi
+
+          {
+            echo "## chromadb-remote-mcp v$VERSION"
+            echo ""
+            printf '%s\n' "$SECTION"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### Docker images"
+            echo ""
+            echo "- \`${{ env.DOCKER_IMAGE }}:$VERSION\`"
+            echo "- \`${{ env.DOCKER_IMAGE }}:latest\`"
+            echo ""
+            echo "### Installation"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${{ env.DOCKER_IMAGE }}:$VERSION"
+            echo '```'
+          } > release-body.md
+
+      - name: Determine tag name
+        id: tag
+        env:
+          VERSION: ${{ needs.docker-publish.outputs.version }}
+        run: echo "TAG=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.TAG }}
+        run: |
+          # If a release for this tag already exists (e.g. retried workflow_dispatch),
+          # update its body in place; otherwise create a new published release.
+          if gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "Release $TAG already exists — updating body."
+            gh release edit "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$TAG" \
+              --notes-file release-body.md \
+              --latest
+          else
+            echo "Creating new release $TAG."
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$TAG" \
+              --notes-file release-body.md \
+              --latest
+          fi
+
+      - name: Append release summary
+        env:
+          VERSION: ${{ needs.docker-publish.outputs.version }}
+          TAG: ${{ steps.tag.outputs.TAG }}
+        run: |
+          {
+            echo "## Release $VERSION Published"
+            echo ""
+            echo "### Docker images"
+            echo "- \`${{ env.DOCKER_IMAGE }}:$VERSION\`"
+            echo "- \`${{ env.DOCKER_IMAGE }}:latest\`"
+            echo ""
+            echo "### Links"
+            echo "- [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/$TAG)"
+            echo "- [Docker Hub](https://hub.docker.com/r/${{ env.DOCKER_IMAGE }})"
+            echo ""
+            echo "### Notes"
+            echo "MCP Registry publication is currently disabled (in development)."
+          } >> "$GITHUB_STEP_SUMMARY"
