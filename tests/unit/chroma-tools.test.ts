@@ -399,6 +399,122 @@ describe("ChromaDB Tools", () => {
       });
     });
 
+    describe("chroma_update_documents (R11 — embedding asymmetry fix)", () => {
+      it("R11 (b): metadata-only update skips embedding recomputation (preserves existing embeddings)", async () => {
+        // documents 미제공 + metadatas 만 → provider.embed 호출 0회 + update args.embeddings === undefined
+        const result = await handleChromaTool(
+          mockClient,
+          "chroma_update_documents",
+          {
+            collection_name: "test_collection",
+            ids: ["id1"],
+            metadatas: [{ updated: true }],
+          },
+          TEST_SERVER_CFG,
+        );
+        expect(result.content[0].text).toContain("Updated 1 documents");
+        expect(mockCollection.update).toHaveBeenCalledTimes(1);
+        const callArgs = (mockCollection.update as unknown as jest.Mock).mock.calls[0][0] as {
+          ids?: string[];
+          documents?: string[] | undefined;
+          embeddings?: number[][] | undefined;
+          metadatas?: Array<Record<string, unknown>> | undefined;
+        };
+        expect(callArgs.ids).toEqual(["id1"]);
+        expect(callArgs.documents).toBeUndefined();
+        expect(callArgs.embeddings).toBeUndefined();
+        expect(callArgs.metadatas).toEqual([{ updated: true }]);
+      });
+
+      it("R11 (a): documents update with default provider passes documents through (no asymmetric default fallback)", async () => {
+        // chromadb-default provider 는 shouldServerEmbed === false → server 측 embed 호출 0회.
+        // collection.update 의 documents 가 그대로 전달되고 embeddings === undefined 인 것이 정상.
+        // (사용자 버그 케이스인 gemini provider 의 1536d 검증은 통합 테스트 또는 실서버에서 — 여기서는
+        //  add 와 update 의 분기 대칭성을 보장하는 것이 핵심.)
+        const result = await handleChromaTool(
+          mockClient,
+          "chroma_update_documents",
+          {
+            collection_name: "test_collection",
+            ids: ["id1", "id2"],
+            documents: ["doc1-updated", "doc2-updated"],
+          },
+          TEST_SERVER_CFG,
+        );
+        expect(result.content[0].text).toContain("Updated 2 documents");
+        const callArgs = (mockCollection.update as unknown as jest.Mock).mock.calls[0][0] as {
+          ids?: string[];
+          documents?: string[] | undefined;
+          embeddings?: number[][] | undefined;
+          metadatas?: Array<Record<string, unknown>> | undefined;
+        };
+        expect(callArgs.ids).toEqual(["id1", "id2"]);
+        expect(callArgs.documents).toEqual(["doc1-updated", "doc2-updated"]);
+        // chromadb-default → server-side embed skip → embeddings undefined (collection 내장 함수 사용).
+        // 핵심: 이 호출이 default 384d 로 폴백하지 않음을 add 와 동일 패턴으로 보장.
+        expect(callArgs.embeddings).toBeUndefined();
+      });
+
+      it("R11 (a-pre-embed): caller-provided embeddings are validated and forwarded as-is", async () => {
+        // 사전 계산된 embeddings 인자가 있을 때, validateEmbeddingDimensions 통과 → update 에 그대로 전달.
+        // 384d 가 collection.metadata.embedding_dimensions === 384 와 일치해야 함.
+        const preEmbeddings: number[][] = [
+          new Array(384).fill(0.1),
+          new Array(384).fill(0.2),
+        ];
+        const result = await handleChromaTool(
+          mockClient,
+          "chroma_update_documents",
+          {
+            collection_name: "test_collection",
+            ids: ["id1", "id2"],
+            embeddings: preEmbeddings,
+          },
+          TEST_SERVER_CFG,
+        );
+        expect(result.content[0].text).toContain("Updated 2 documents");
+        const callArgs = (mockCollection.update as unknown as jest.Mock).mock.calls[0][0] as {
+          ids?: string[];
+          documents?: string[] | undefined;
+          embeddings?: number[][] | undefined;
+          metadatas?: Array<Record<string, unknown>> | undefined;
+        };
+        expect(callArgs.embeddings).toEqual(preEmbeddings);
+        const embeds = callArgs.embeddings as number[][];
+        expect(embeds[0].length).toBe(384);
+      });
+
+      it("R11 (c): external provider mode + documents-only returns error (matches add behavior)", async () => {
+        // collection.metadata 의 embedding_provider 를 'external' 로 변경 + server cfg 도 external 로.
+        // documents 만 제공 + embeddings 누락 → 'External embedding mode requires pre-computed embeddings' 에러.
+        mockCollection.metadata = {
+          ...mockCollection.metadata,
+          embedding_provider: "external",
+          embedding_model: "user-model",
+          embedding_dimensions: 1024,
+        };
+        const externalCfg: EmbeddingProviderConfig = {
+          provider: "external",
+          model: "user-model",
+          dimensions: 1024,
+        };
+        const result = await handleChromaTool(
+          mockClient,
+          "chroma_update_documents",
+          {
+            collection_name: "test_collection",
+            ids: ["id1"],
+            documents: ["doc1"],
+          },
+          externalCfg,
+        );
+        expect(result.content[0].text).toContain(
+          "External embedding mode requires pre-computed embeddings",
+        );
+        expect(mockCollection.update).not.toHaveBeenCalled();
+      });
+    });
+
     describe("error handling", () => {
       it("should handle unknown tool", async () => {
         const result = await handleChromaTool(mockClient, "unknown_tool", {}, TEST_SERVER_CFG);

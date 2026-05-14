@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-05-14
+
+### Fixed
+
+- **Claude Desktop Connectors handshake at root path** — `POST /` (path-less Connector URL) now routes through the MCP handler chain (`validateProtocolVersion` → `validateOriginHeader` → `oidcAuthMiddleware` → `mcpHandler`) instead of being captured by the catch-all ChromaDB proxy. Users who registered `https://<host>` (without `/mcp`) no longer hit a silent handshake failure (R2).
+- **`chroma_update_documents` embedding dimension mismatch** — the update handler used to call `collection.update({ids, documents, metadatas})` without explicit `embeddings`, causing the ChromaDB SDK to fall back to its default 384d embedding function (`all-MiniLM-L6-v2`) and break collections that use other providers (e.g. `gemini-embedding-001` at 1536d → `Embedding dimension 384 expected, got 1536`). The handler now mirrors `chroma_add_documents`: resolves the per-collection provider config, computes embeddings server-side when applicable, and passes them to `collection.update`. Metadata-only updates (no `documents`) skip embedding recomputation and preserve the existing vectors. External-provider mode requires pre-computed `embeddings`, mirroring add (R11).
+- **LibreChat-style pre-shared `client_id` is now accepted** — when `OAUTH_PROXY_ALLOW_PRESHARED_CLIENT=true` and the requested `client_id` equals `GOOGLE_OAUTH_CLIENT_ID`, `/oauth/authorize` and `/oauth/token` accept the request as an ephemeral pre-registered client. PKCE (S256 + `code_verifier`) and `redirect_uri` consistency remain mandatory; the flag is opt-in (default off) so DCR clients are unaffected (R3, E2).
+- **`OIDC_AUDIENCE` automatically falls back to `GOOGLE_OAUTH_CLIENT_ID` when OAuth Proxy is enabled** — Google ID tokens always carry `aud == client_id`, so requiring both env vars to be set was redundant. With `OAUTH_PROXY_ENABLED=true` the verifier now uses `GOOGLE_OAUTH_CLIENT_ID` as the audience when `OIDC_AUDIENCE` is unset; explicit `OIDC_AUDIENCE` still wins, and OAuth Proxy off keeps v2.0.0 behaviour byte-identical (R4).
+- **Banner version is no longer hardcoded to `v2.0.0`** — the startup banner now reads `package.json#version` at startup (`readFileSync`-based, build/start-safe) and prints the actual release tag (R6).
+
+### Changed
+
+- **`resolveResourceBaseUrl` honours `OAUTH_PROXY_BASE_URL` first** — when the env var is set, the protected-resource metadata returns it verbatim (trailing slash stripped). The previous `X-Forwarded-Proto` / `X-Forwarded-Host` / `req.headers.host` fallback chain is preserved when the env is unset, so OAuth-Proxy-off deployments are unchanged. This fixes a regression where Caddy without `X-Forwarded-Proto` exposed a plain-`http://` resource that OAuth 2.1 clients refused (R5).
+- **New env: `OAUTH_PROXY_ALLOW_PRESHARED_CLIENT`** — boolean opt-in flag for the pre-shared `client_id` fallback above. Default `false`. Propagated through `docker-compose.yml` / `docker-compose.dev.yml` (E2).
+
+### Migration
+
+- **`docker-compose.yml` / `docker-compose.dev.yml` now propagate the v2.1.0 OAuth-Proxy env block** (`OAUTH_PROXY_ENABLED`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `OAUTH_PROXY_BASE_URL`, `OAUTH_PROXY_GOOGLE_SCOPES`, `OAUTH_PROXY_STORE_MAX`) plus the new v2.1.1 `OAUTH_PROXY_ALLOW_PRESHARED_CLIENT`. Operators who manually patched their compose file in v2.1.0 can drop those local additions (R1, R10).
+
 ## [2.1.0] - 2026-05-13
 
 ### Added

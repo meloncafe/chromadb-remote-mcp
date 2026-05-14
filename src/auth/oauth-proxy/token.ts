@@ -86,11 +86,25 @@ export function tokenHandler(req: Request, res: Response): void {
   }
 
   if (entry.client_id !== client_id) {
-    res.status(400).json({
-      error: "invalid_grant",
-      error_description: "client_id mismatch",
-    });
-    return;
+    // R3 + E2: pre-shared client_id fallback (LibreChat 패턴)
+    // authorize 에서 ephemeral pre-registered (entry.client_id === GOOGLE_OAUTH_CLIENT_ID) 로 통과한 경우,
+    // token request 의 client_id 도 GOOGLE_OAUTH_CLIENT_ID 면 동등성 우회. PKCE code_verifier 검증은
+    // 아래에서 강제됨 — 인가 코드 탈취 위험 없음.
+    const presharedFlag = process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT === "true";
+    const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+    const allowPreshared =
+      presharedFlag &&
+      typeof googleClientId === "string" &&
+      googleClientId.length > 0 &&
+      entry.client_id === googleClientId &&
+      client_id === googleClientId;
+    if (!allowPreshared) {
+      res.status(400).json({
+        error: "invalid_grant",
+        error_description: "client_id mismatch",
+      });
+      return;
+    }
   }
   if (entry.client_redirect_uri !== redirect_uri) {
     res.status(400).json({

@@ -2,6 +2,7 @@ import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals
 import { generateKeyPair, SignJWT, exportJWK, type JWK } from "jose";
 import { oidcAuthMiddleware } from "../../../src/auth/middleware.js";
 import { clearJwksCache } from "../../../src/auth/jwks-cache.js";
+import * as oidcVerifier from "../../../src/auth/oidc-verifier.js";
 
 const ISSUER = "https://issuer.example";
 const AUDIENCE = "test-audience";
@@ -248,5 +249,67 @@ describe("Phase 10: oidcAuthMiddleware (R26, R27, R31)", () => {
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(req.user?.provider).toBe("mcp_auth_token");
+  });
+
+  describe("R4: OIDC_AUDIENCE → GOOGLE_OAUTH_CLIENT_ID fallback (OAuth Proxy mode)", () => {
+    let verifySpy: jest.SpiedFunction<typeof oidcVerifier.verifyOidcToken>;
+
+    beforeEach(() => {
+      verifySpy = jest.spyOn(oidcVerifier, "verifyOidcToken").mockResolvedValue({
+        ok: true,
+        payload: { sub: "alice@example", iss: ISSUER, aud: "test-google-client" },
+      } as unknown as Awaited<ReturnType<typeof oidcVerifier.verifyOidcToken>>);
+    });
+
+    afterEach(() => {
+      verifySpy.mockRestore();
+    });
+
+    it("R4 (a): OIDC_AUDIENCE 미설정 + OAUTH_PROXY_ENABLED=true + GOOGLE_OAUTH_CLIENT_ID=xyz → audience === 'xyz'", async () => {
+      delete process.env.OIDC_AUDIENCE;
+      process.env.OAUTH_PROXY_ENABLED = "true";
+      process.env.GOOGLE_OAUTH_CLIENT_ID = "xyz";
+      process.env.OIDC_ISSUERS = ISSUER;
+
+      const req = makeReq({ authorization: "Bearer fake-token-a" });
+      const res = makeRes();
+      const next = jest.fn();
+      await oidcAuthMiddleware(req as never, res as never, next as never);
+
+      expect(verifySpy).toHaveBeenCalledTimes(1);
+      const callArgs = verifySpy.mock.calls[0];
+      // verifyOidcToken(token, issuers, audience)
+      expect(callArgs[2]).toBe("xyz");
+    });
+
+    it("R4 (b): OIDC_AUDIENCE=abc + GOOGLE_OAUTH_CLIENT_ID=xyz → audience === 'abc' (env 우선)", async () => {
+      process.env.OIDC_AUDIENCE = "abc";
+      process.env.OAUTH_PROXY_ENABLED = "true";
+      process.env.GOOGLE_OAUTH_CLIENT_ID = "xyz";
+      process.env.OIDC_ISSUERS = ISSUER;
+
+      const req = makeReq({ authorization: "Bearer fake-token-b" });
+      const res = makeRes();
+      const next = jest.fn();
+      await oidcAuthMiddleware(req as never, res as never, next as never);
+
+      expect(verifySpy).toHaveBeenCalledTimes(1);
+      expect(verifySpy.mock.calls[0][2]).toBe("abc");
+    });
+
+    it("R4 (c): OAUTH_PROXY_ENABLED 미설정 + OIDC_AUDIENCE 미설정 → audience === undefined", async () => {
+      delete process.env.OIDC_AUDIENCE;
+      delete process.env.OAUTH_PROXY_ENABLED;
+      process.env.GOOGLE_OAUTH_CLIENT_ID = "xyz"; // 설정해도 OAUTH_PROXY_ENABLED off 이므로 무시
+      process.env.OIDC_ISSUERS = ISSUER;
+
+      const req = makeReq({ authorization: "Bearer fake-token-c" });
+      const res = makeRes();
+      const next = jest.fn();
+      await oidcAuthMiddleware(req as never, res as never, next as never);
+
+      expect(verifySpy).toHaveBeenCalledTimes(1);
+      expect(verifySpy.mock.calls[0][2]).toBeUndefined();
+    });
   });
 });

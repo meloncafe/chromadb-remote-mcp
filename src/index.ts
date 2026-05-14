@@ -26,6 +26,34 @@ import {
 import { oidcAuthMiddleware } from "./auth/middleware.js";
 import { protectedResourceHandler } from "./auth/protected-resource.js";
 import { createOAuthProxyRouter } from "./auth/oauth-proxy/index.js";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
+
+// R6: package.json 의 version 을 시작 시 한 번 로드 (banner 등에서 재사용).
+// 옵션 (c) 채택 — tsconfig rootDir: "./src" 가 옵션 (a) static JSON import 를 거부.
+// import.meta.url 사용을 회피하고 process.cwd() 기반 후보 경로 검색 (ts-jest 호환).
+// build 산출물 (build/index.js) 가 docker WORKDIR (= 패키지 루트) 에서 실행되거나,
+// jest 가 패키지 루트를 cwd 로 실행하므로 첫 번째 후보가 매칭된다.
+const PACKAGE_VERSION: string = (() => {
+  const candidates = [
+    path.join(process.cwd(), "package.json"),
+    path.join(process.cwd(), "..", "package.json"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = readFileSync(candidate, "utf-8");
+      const parsed = JSON.parse(raw) as { name?: unknown; version?: unknown };
+      // chroma-remote-mcp 패키지의 package.json 만 인정 — 모노레포 root 의 package.json
+      // (다른 name) 이 잘못 매칭되는 것을 방지.
+      if (parsed.name === "chroma-remote-mcp" && typeof parsed.version === "string" && parsed.version.length > 0) {
+        return parsed.version;
+      }
+    } catch {
+      // continue — 다음 후보 시도.
+    }
+  }
+  return "unknown";
+})();
 
 export interface Closeable {
   close(): void;
@@ -1365,6 +1393,7 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
 // MCP endpoint - Streamable HTTP Transport (with protocol version, origin validation and optional auth)
 // This must be defined BEFORE the catch-all proxy
 app.post("/mcp", validateProtocolVersion, validateOriginHeader, oidcAuthMiddleware, mcpHandler);
+app.post("/", validateProtocolVersion, validateOriginHeader, oidcAuthMiddleware, mcpHandler);
 
 // Health check handler - exported for testing
 export async function healthHandler(_req: express.Request, res: express.Response) {
@@ -1535,7 +1564,7 @@ export async function main() {
     // Return server for graceful shutdown
     return app.listen(port, () => {
       console.log(`
-🚀 ChromaDB Remote MCP Server v2.0.0
+🚀 ChromaDB Remote MCP Server v${PACKAGE_VERSION}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📡 Endpoints

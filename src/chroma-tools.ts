@@ -1003,9 +1003,53 @@ export async function handleChromaTool(
         if (compatGuard !== null) {
           return compatGuard;
         }
+
+        const hasDocuments = Array.isArray(args.documents) && args.documents.length > 0;
+        const hasEmbeddings = Array.isArray(args.embeddings) && args.embeddings.length > 0;
+
+        if (hasEmbeddings) {
+          const dimError = validateEmbeddingDimensions(args.embeddings, collection.metadata);
+          if (dimError) {
+            return { content: [{ type: "text", text: dimError }] };
+          }
+        }
+
+        const effectiveProviderId =
+          (collection.metadata?.embedding_provider as string | undefined) ||
+          serverProviderCfg.provider;
+        if (effectiveProviderId === "external" && hasDocuments && !hasEmbeddings) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "Error: External embedding mode requires pre-computed embeddings. " +
+                  "Pass the 'embeddings' argument (a 2D float array sized to the collection's embedding_dimensions) " +
+                  "instead of 'documents' only.",
+              },
+            ],
+          };
+        }
+
+        let finalEmbeddings: number[][] | undefined;
+        if (hasEmbeddings) {
+          finalEmbeddings = args.embeddings;
+        } else if (hasDocuments) {
+          const collectionCfg = resolveProviderConfigForCollection(
+            serverProviderCfg,
+            collection.metadata,
+          );
+          const provider: EmbeddingProvider = getProviderForConfig(collectionCfg);
+          const taskType: "document" = "document";
+          if (shouldServerEmbed(provider.getProviderId())) {
+            finalEmbeddings = await provider.embed(args.documents, taskType);
+          }
+        }
+
         await collection.update({
           ids: args.ids,
-          documents: args.documents,
+          documents: hasDocuments ? args.documents : undefined,
+          embeddings: finalEmbeddings,
           metadatas: args.metadatas,
         });
         return {

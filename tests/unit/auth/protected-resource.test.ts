@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import express from "express";
 import type { AddressInfo } from "net";
-import { protectedResourceHandler } from "../../../src/auth/protected-resource.js";
+import { protectedResourceHandler, resolveResourceBaseUrl } from "../../../src/auth/protected-resource.js";
 
 describe("Phase 10: GET /.well-known/oauth-protected-resource (R29, R38)", () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -108,5 +108,65 @@ describe("Phase 10: GET /.well-known/oauth-protected-resource (R29, R38)", () =>
     expect(body.authorization_servers).toEqual(["https://accounts.google.com"]);
 
     delete process.env.OAUTH_PROXY_ENABLED;
+  });
+
+  describe("R5: resolveResourceBaseUrl OAUTH_PROXY_BASE_URL priority", () => {
+    let savedEnv: NodeJS.ProcessEnv;
+
+    beforeEach(() => {
+      savedEnv = { ...process.env };
+    });
+
+    afterEach(() => {
+      process.env = savedEnv;
+    });
+
+    it("R5 (a): OAUTH_PROXY_BASE_URL set + no headers → returns env value (trailing slash stripped)", () => {
+      process.env.OAUTH_PROXY_BASE_URL = "https://c-db.devsaurus.io/";
+      const req = {
+        headers: {},
+        secure: false,
+      } as unknown as import("express").Request;
+      const result = resolveResourceBaseUrl(req);
+      expect(result).toBe("https://c-db.devsaurus.io");
+    });
+
+    it("R5 (b): OAUTH_PROXY_BASE_URL unset + X-Forwarded-Proto=https → resource starts with https://", () => {
+      delete process.env.OAUTH_PROXY_BASE_URL;
+      const req = {
+        headers: {
+          host: "mcp.example.com",
+          "x-forwarded-proto": "https",
+        },
+        secure: false,
+      } as unknown as import("express").Request;
+      const result = resolveResourceBaseUrl(req);
+      expect(result.startsWith("https://")).toBe(true);
+      expect(result).toBe("https://mcp.example.com");
+    });
+
+    it("R5 (c): OAUTH_PROXY_BASE_URL unset + no headers → falls back to host (default localhost)", () => {
+      delete process.env.OAUTH_PROXY_BASE_URL;
+      const req = {
+        headers: {},
+        secure: false,
+      } as unknown as import("express").Request;
+      const result = resolveResourceBaseUrl(req);
+      // host 헤더 없음 → "localhost" + http (req.secure false).
+      expect(result).toBe("http://localhost");
+    });
+
+    it("R5: OAUTH_PROXY_BASE_URL set + X-Forwarded-Proto=https → env value 우선 (헤더 무시)", () => {
+      process.env.OAUTH_PROXY_BASE_URL = "https://canonical.example";
+      const req = {
+        headers: {
+          host: "different-host.example",
+          "x-forwarded-proto": "https",
+        },
+        secure: false,
+      } as unknown as import("express").Request;
+      const result = resolveResourceBaseUrl(req);
+      expect(result).toBe("https://canonical.example");
+    });
   });
 });

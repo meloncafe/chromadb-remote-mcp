@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { createHash, timingSafeEqual } from "crypto";
 import { resolveOidcIssuers } from "./presets.js";
 import { verifyOidcToken, type OidcVerifyFailureReason } from "./oidc-verifier.js";
-import { resolveResourceBaseUrl } from "./protected-resource.js";
+import { resolveResourceBaseUrl, isOAuthProxyEnabled } from "./protected-resource.js";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -66,7 +66,11 @@ export async function oidcAuthMiddleware(
 ): Promise<void> {
   const oidcIssuers = resolveOidcIssuers(process.env.OIDC_ISSUERS, process.env.OIDC_PRESET);
   const mcpToken = process.env.MCP_AUTH_TOKEN;
-  const audience = process.env.OIDC_AUDIENCE;
+  // R4: OIDC_AUDIENCE 미설정 시 OAuth Proxy 모드에 한정해 GOOGLE_OAUTH_CLIENT_ID 자동 채택.
+  // Google ID token 의 aud claim 은 항상 OAuth client_id 와 동일하므로 두 env 중복 입력 불필요.
+  const audience =
+    process.env.OIDC_AUDIENCE ||
+    (isOAuthProxyEnabled() ? process.env.GOOGLE_OAUTH_CLIENT_ID : undefined);
 
   if (oidcIssuers.length === 0 && !mcpToken) {
     if (!req.user) {

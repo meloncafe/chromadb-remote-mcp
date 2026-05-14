@@ -68,14 +68,28 @@ export function authorizeHandler(req: Request, res: Response): void {
   }
 
   const client = getClient(client_id);
-  if (!client) {
+
+  // R3 + E2: pre-shared client_id fallback (LibreChat 패턴)
+  // OAUTH_PROXY_ALLOW_PRESHARED_CLIENT=true + client_id === GOOGLE_OAUTH_CLIENT_ID 일 때
+  // ephemeral pre-registered client 로 간주. PKCE (code_challenge=S256) 는 위에서 이미 강제됐으므로
+  // 인가 코드 탈취 위험 없음. redirect_uri 는 client 가 보낸 값을 신뢰 (allowlist 없음).
+  const presharedFlag = process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT === "true";
+  const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const allowPreshared =
+    !client &&
+    presharedFlag &&
+    typeof googleClientId === "string" &&
+    googleClientId.length > 0 &&
+    client_id === googleClientId;
+
+  if (!client && !allowPreshared) {
     res.status(400).json({
       error: "invalid_client",
       error_description: "client_id not found or expired",
     });
     return;
   }
-  if (!client.redirect_uris.includes(redirect_uri)) {
+  if (client && !client.redirect_uris.includes(redirect_uri)) {
     res.status(400).json({
       error: "invalid_redirect_uri",
       error_description: "redirect_uri does not match registered redirect_uris",
@@ -92,7 +106,6 @@ export function authorizeHandler(req: Request, res: Response): void {
     scope,
   });
 
-  const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   if (!googleClientId) {
     res.status(500).json({
       error: "server_error",

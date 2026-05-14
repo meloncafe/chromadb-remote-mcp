@@ -161,4 +161,65 @@ describe("oauth-proxy: GET /oauth/authorize (R4, E4, R5)", () => {
     expect(res.statusCode).toBe(400);
     expect((res.body as Record<string, unknown>).error).toBe("unsupported_response_type");
   });
+
+  // R3 + E2: pre-shared client_id fallback (LibreChat 패턴) 케이스
+  describe("R3 + E2: pre-shared client_id fallback", () => {
+    it("flag on + client_id === GOOGLE_OAUTH_CLIENT_ID + PKCE valid → 302 to Google", () => {
+      process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT = "true";
+      const presharedClientId = "test-google-client"; // = GOOGLE_OAUTH_CLIENT_ID
+      const q = {
+        response_type: "code",
+        client_id: presharedClientId,
+        redirect_uri: "http://localhost/cb",
+        scope: "openid",
+        state: "c-state",
+        code_challenge: "preshared-ch-123",
+        code_challenge_method: "S256",
+      };
+      const req = mockReq(q);
+      const res = mockRes();
+      authorizeHandler(req, res);
+      expect(res.statusCode).toBe(302);
+      expect(res.redirectLocation).toBeDefined();
+      expect(res.redirectLocation as string).toContain("https://accounts.google.com/o/oauth2/v2/auth");
+    });
+
+    it("flag off + pre-shared client_id → 400 invalid_client (no fallback)", () => {
+      delete process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT;
+      const presharedClientId = "test-google-client";
+      const q = {
+        response_type: "code",
+        client_id: presharedClientId,
+        redirect_uri: "http://localhost/cb",
+        scope: "openid",
+        state: "c-state",
+        code_challenge: "preshared-ch-123",
+        code_challenge_method: "S256",
+      };
+      const req = mockReq(q);
+      const res = mockRes();
+      authorizeHandler(req, res);
+      expect(res.statusCode).toBe(400);
+      expect((res.body as Record<string, unknown>).error).toBe("invalid_client");
+    });
+
+    it("flag on + pre-shared client_id but PKCE missing → 400 invalid_request (PKCE never bypassed)", () => {
+      process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT = "true";
+      const presharedClientId = "test-google-client";
+      const q = {
+        response_type: "code",
+        client_id: presharedClientId,
+        redirect_uri: "http://localhost/cb",
+        scope: "openid",
+        state: "c-state",
+        // code_challenge 누락
+        code_challenge_method: "S256",
+      };
+      const req = mockReq(q);
+      const res = mockRes();
+      authorizeHandler(req, res);
+      expect(res.statusCode).toBe(400);
+      expect((res.body as Record<string, unknown>).error).toBe("invalid_request");
+    });
+  });
 });

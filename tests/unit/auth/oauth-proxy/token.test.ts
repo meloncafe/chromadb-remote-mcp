@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { createHash } from "crypto";
 import type { Request, Response } from "express";
 import { tokenHandler, verifyPkceS256 } from "../../../../src/auth/oauth-proxy/token.js";
@@ -167,5 +167,91 @@ describe("oauth-proxy: POST /oauth/token (R5, R6)", () => {
     const c = createHash("sha256").update(v, "utf8").digest("base64url");
     expect(verifyPkceS256(v, c)).toBe(true);
     expect(verifyPkceS256(v, "wrong-challenge")).toBe(false);
+  });
+
+  // R3 + E2: pre-shared client_id fallback (LibreChat 패턴) 케이스
+  describe("R3 + E2: pre-shared client_id fallback at token endpoint", () => {
+    let originalEnv: NodeJS.ProcessEnv;
+    const PRESHARED_CLIENT_ID = "test-google-client";
+
+    beforeEach(() => {
+      originalEnv = { ...process.env };
+      process.env.GOOGLE_OAUTH_CLIENT_ID = PRESHARED_CLIENT_ID;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    function seedPresharedCode(verifier: string): { code: string; redirect_uri: string } {
+      // entry.client_id 를 GOOGLE_OAUTH_CLIENT_ID 로 시드 (authorize 가 pre-shared 로 통과한 시나리오)
+      const challenge = s256Challenge(verifier);
+      const redirect_uri = "http://localhost/cb";
+      const code = putAuthzCode({
+        client_id: PRESHARED_CLIENT_ID,
+        client_redirect_uri: redirect_uri,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        id_token: FIXED_ID_TOKEN,
+        scope: "openid email",
+        expires_in: 3600,
+      });
+      return { code, redirect_uri };
+    }
+
+    it("flag on + entry.client_id === client_id === GOOGLE_OAUTH_CLIENT_ID → 200 (token issued)", () => {
+      process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT = "true";
+      const verifier = "preshared-verifier-xyz-1";
+      const { code, redirect_uri } = seedPresharedCode(verifier);
+      const req = mockReq({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri,
+        client_id: PRESHARED_CLIENT_ID,
+        code_verifier: verifier,
+      });
+      const res = mockRes();
+      tokenHandler(req, res);
+      expect(res.statusCode).toBe(200);
+      const body = res.body as Record<string, unknown>;
+      expect(body.access_token).toBe(FIXED_ID_TOKEN);
+      expect(body.token_type).toBe("Bearer");
+    });
+
+    it("flag off + entry.client_id !== client_id → 400 invalid_grant (no fallback)", () => {
+      delete process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT;
+      const verifier = "preshared-verifier-xyz-2";
+      const { code, redirect_uri } = seedPresharedCode(verifier);
+      // entry.client_id = PRESHARED_CLIENT_ID; request 의 client_id 가 다른 값 → mismatch.
+      // flag off 이므로 fallback 없이 400.
+      const req = mockReq({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri,
+        client_id: "other-client",
+        code_verifier: verifier,
+      });
+      const res = mockRes();
+      tokenHandler(req, res);
+      expect(res.statusCode).toBe(400);
+      expect((res.body as Record<string, unknown>).error).toBe("invalid_grant");
+    });
+
+    it("flag on + pre-shared client_id but PKCE verifier wrong → 400 invalid_grant (PKCE never bypassed)", () => {
+      process.env.OAUTH_PROXY_ALLOW_PRESHARED_CLIENT = "true";
+      const verifier = "preshared-verifier-xyz-3";
+      const { code, redirect_uri } = seedPresharedCode(verifier);
+      const req = mockReq({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri,
+        client_id: PRESHARED_CLIENT_ID,
+        code_verifier: "wrong-verifier",
+      });
+      const res = mockRes();
+      tokenHandler(req, res);
+      expect(res.statusCode).toBe(400);
+      expect((res.body as Record<string, unknown>).error).toBe("invalid_grant");
+    });
   });
 });
