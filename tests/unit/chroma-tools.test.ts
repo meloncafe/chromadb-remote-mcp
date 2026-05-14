@@ -436,20 +436,20 @@ describe("ChromaDB Tools", () => {
           "chroma_update_documents",
           {
             collection_name: "test_collection",
-            ids: ["id1", "id2"],
-            documents: ["doc1-updated", "doc2-updated"],
+            ids: ["id1"],
+            documents: ["doc1-updated"],
           },
           TEST_SERVER_CFG,
         );
-        expect(result.content[0].text).toContain("Updated 2 documents");
+        expect(result.content[0].text).toContain("Updated 1 documents");
         const callArgs = (mockCollection.update as unknown as jest.Mock).mock.calls[0][0] as {
           ids?: string[];
           documents?: string[] | undefined;
           embeddings?: number[][] | undefined;
           metadatas?: Array<Record<string, unknown>> | undefined;
         };
-        expect(callArgs.ids).toEqual(["id1", "id2"]);
-        expect(callArgs.documents).toEqual(["doc1-updated", "doc2-updated"]);
+        expect(callArgs.ids).toEqual(["id1"]);
+        expect(callArgs.documents).toEqual(["doc1-updated"]);
         // chromadb-default → server-side embed skip → embeddings undefined (collection 내장 함수 사용).
         // 핵심: 이 호출이 default 384d 로 폴백하지 않음을 add 와 동일 패턴으로 보장.
         expect(callArgs.embeddings).toBeUndefined();
@@ -458,21 +458,18 @@ describe("ChromaDB Tools", () => {
       it("R11 (a-pre-embed): caller-provided embeddings are validated and forwarded as-is", async () => {
         // 사전 계산된 embeddings 인자가 있을 때, validateEmbeddingDimensions 통과 → update 에 그대로 전달.
         // 384d 가 collection.metadata.embedding_dimensions === 384 와 일치해야 함.
-        const preEmbeddings: number[][] = [
-          new Array(384).fill(0.1),
-          new Array(384).fill(0.2),
-        ];
+        const preEmbeddings: number[][] = [new Array(384).fill(0.1)];
         const result = await handleChromaTool(
           mockClient,
           "chroma_update_documents",
           {
             collection_name: "test_collection",
-            ids: ["id1", "id2"],
+            ids: ["id1"],
             embeddings: preEmbeddings,
           },
           TEST_SERVER_CFG,
         );
-        expect(result.content[0].text).toContain("Updated 2 documents");
+        expect(result.content[0].text).toContain("Updated 1 documents");
         const callArgs = (mockCollection.update as unknown as jest.Mock).mock.calls[0][0] as {
           ids?: string[];
           documents?: string[] | undefined;

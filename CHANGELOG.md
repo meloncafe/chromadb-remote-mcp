@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-05-14
+
+### Fixed
+
+- **`chroma_update_documents` silent pass on missing ids** — 존재하지 않는 id 에 대한 update 가 ChromaDB SDK 측에서 에러 없이 통과하던 회귀. 호출 직전에 `collection.get({ids})` 로 존재 검증하여 누락 id 가 있으면 명시적 에러 응답 반환 (R12).
+- **`chroma_delete_collection` false-error after successful delete** — ChromaDB v2 SDK 의 `deleteCollection` 이 정상 삭제 후에도 응답 파싱에서 throw 하던 회귀 (실제 삭제는 성공). `listCollections` 로 실제 상태를 확인하여 silent recovery — 진짜 실패만 throw 전파 (R13).
+
 ## [2.1.1] - 2026-05-14
 
 ### Fixed

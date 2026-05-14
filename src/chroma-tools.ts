@@ -729,7 +729,20 @@ export async function handleChromaTool(
       }
 
       case "chroma_delete_collection": {
-        await chromaClient.deleteCollection({ name: args.collection_name });
+        // R13 (v2.1.2): ChromaDB v2 SDK 의 deleteCollection 이 정상 삭제 후에도
+        // 응답 파싱에서 throw 하는 회귀 (실제 삭제는 성공). listCollections 로 실제
+        // 상태를 확인하여 silent recovery — 진짜 실패만 throw 전파.
+        try {
+          await chromaClient.deleteCollection({ name: args.collection_name });
+        } catch (deleteErr) {
+          const collections = await chromaClient.listCollections();
+          const stillExists = collections.some(
+            (c) => (typeof c === "string" ? c : (c as { name: string }).name) === args.collection_name,
+          );
+          if (stillExists) {
+            throw deleteErr;
+          }
+        }
         return {
           content: [
             {
@@ -1002,6 +1015,24 @@ export async function handleChromaTool(
         const compatGuard = handleLegacyCompat(matchResult, toolName);
         if (compatGuard !== null) {
           return compatGuard;
+        }
+
+        // R12 (v2.1.2): 존재하지 않는 id 에 대한 update 가 ChromaDB SDK 측에서
+        // silent pass 되는 회귀 — 사전 collection.get 으로 누락 id 검증.
+        if (Array.isArray(args.ids) && args.ids.length > 0) {
+          const existing = await collection.get({ ids: args.ids as string[] });
+          const existingIds = new Set(existing.ids);
+          const missingIds = (args.ids as string[]).filter((id) => !existingIds.has(id));
+          if (missingIds.length > 0) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: ids not found in collection '${args.collection_name}': ${missingIds.join(", ")}`,
+                },
+              ],
+            };
+          }
         }
 
         const hasDocuments = Array.isArray(args.documents) && args.documents.length > 0;
