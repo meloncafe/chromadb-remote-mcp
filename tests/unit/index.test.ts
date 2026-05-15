@@ -38,6 +38,8 @@ import {
   shouldLog,
   shouldSkipRateLimit,
   validateOriginHeader,
+  corsMiddleware,
+  getCorsAllowedOrigins,
   validateRateLimitMax,
   waitForChroma,
 } from "../../src";
@@ -2447,6 +2449,109 @@ describe("index.ts", () => {
       const warnMessages = warnSpy.mock.calls.map((args) => String(args[0])).join("\n");
       expect(warnMessages).toContain("all-MiniLM-L6-v2, English-only");
       warnSpy.mockRestore();
+    });
+  });
+
+  describe("corsMiddleware (v2.2.2 — browser OAuth/MCP support)", () => {
+    let req: Partial<Request>;
+    let res: Partial<ExpressResponse>;
+    let next: NextFunction;
+    let setHeaderSpy: jest.Mock;
+    let statusSpy: jest.Mock;
+    let endSpy: jest.Mock;
+
+    beforeEach(() => {
+      delete process.env.ALLOWED_ORIGINS;
+      setHeaderSpy = jest.fn() as jest.Mock;
+      statusSpy = jest.fn(() => res as ExpressResponse) as jest.Mock;
+      endSpy = jest.fn() as jest.Mock;
+      req = { headers: {}, method: "POST", path: "/oauth/token" };
+      res = {
+        setHeader: setHeaderSpy,
+        status: statusSpy,
+        end: endSpy,
+      } as Partial<ExpressResponse>;
+      next = jest.fn() as NextFunction;
+    });
+
+    it("getCorsAllowedOrigins includes claude.ai, anthropic, dash.cloudflare.com by default", () => {
+      const allowed = getCorsAllowedOrigins();
+      expect(allowed).toContain("https://claude.ai");
+      expect(allowed).toContain("https://api.anthropic.com");
+      expect(allowed).toContain("https://dash.cloudflare.com");
+    });
+
+    it("getCorsAllowedOrigins merges ALLOWED_ORIGINS env (idempotent)", () => {
+      process.env.ALLOWED_ORIGINS = "https://custom.example.com,https://claude.ai";
+      const allowed = getCorsAllowedOrigins();
+      expect(allowed).toContain("https://custom.example.com");
+      // claude.ai not duplicated
+      expect(allowed.filter((o) => o === "https://claude.ai").length).toBe(1);
+    });
+
+    it("sets Access-Control-Allow-Origin for allowed origin (claude.ai)", () => {
+      req.headers = { origin: "https://claude.ai" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith("Access-Control-Allow-Origin", "https://claude.ai");
+      expect(setHeaderSpy).toHaveBeenCalledWith("Vary", "Origin");
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("sets CORS headers for dash.cloudflare.com", () => {
+      req.headers = { origin: "https://dash.cloudflare.com" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith(
+        "Access-Control-Allow-Origin",
+        "https://dash.cloudflare.com",
+      );
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("short-circuits OPTIONS preflight with 204 (no body)", () => {
+      req.method = "OPTIONS";
+      req.headers = { origin: "https://claude.ai" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(statusSpy).toHaveBeenCalledWith(204);
+      expect(endSpy).toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("does NOT set ACAO for unknown origin (browser blocks downstream)", () => {
+      req.headers = { origin: "https://evil.example.com" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      const acaoCall = setHeaderSpy.mock.calls.find((c) => c[0] === "Access-Control-Allow-Origin");
+      expect(acaoCall).toBeUndefined();
+      // Still calls next() — actual blocking happens in validateOriginHeader downstream.
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("allows localhost (any port) for development", () => {
+      req.headers = { origin: "http://localhost:5173" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith(
+        "Access-Control-Allow-Origin",
+        "http://localhost:5173",
+      );
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("ALLOWED_ORIGINS env extends the allowlist", () => {
+      process.env.ALLOWED_ORIGINS = "https://my-app.example.com";
+      req.headers = { origin: "https://my-app.example.com" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith(
+        "Access-Control-Allow-Origin",
+        "https://my-app.example.com",
+      );
+    });
+
+    it("does NOT set Access-Control-Allow-Credentials (we use Bearer tokens)", () => {
+      req.headers = { origin: "https://claude.ai" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      const credCall = setHeaderSpy.mock.calls.find(
+        (c) => c[0] === "Access-Control-Allow-Credentials",
+      );
+      expect(credCall).toBeUndefined();
     });
   });
 });

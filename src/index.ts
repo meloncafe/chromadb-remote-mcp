@@ -1364,6 +1364,91 @@ export function securityHeaders(
 // Apply security headers
 app.use(securityHeaders);
 
+/**
+ * Returns the effective CORS allow-list:
+ *   defaults + ALLOWED_ORIGINS env (comma-separated) + localhost-via-pattern
+ *
+ * Defaults cover the OAuth proxy clients we know about:
+ *   - https://claude.ai            (Claude.ai web app)
+ *   - https://api.anthropic.com    (server-to-server callbacks)
+ *   - https://dash.cloudflare.com  (Cloudflare AI Gateway dashboard)
+ *
+ * Localhost (any port) is always allowed for development. The env var is
+ * shared with validateOriginHeader so operators don't have to maintain two
+ * lists.
+ */
+export function getCorsAllowedOrigins(): string[] {
+  const defaults = [
+    "https://claude.ai",
+    "https://api.anthropic.com",
+    "https://dash.cloudflare.com",
+  ];
+  const custom =
+    process.env.ALLOWED_ORIGINS?.split(",")
+      .map((o) => o.trim())
+      .filter(Boolean) || [];
+  return Array.from(new Set([...defaults, ...custom]));
+}
+
+const CORS_LOCALHOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1])(:\d+)?$/;
+
+/**
+ * CORS middleware for browser-based OAuth clients (Claude.ai, Cloudflare
+ * dashboard, mcp-remote, etc.). Without this, browsers reject the cross-
+ * origin POST to /oauth/token even though our server processed the request
+ * — the response just has no Access-Control-Allow-Origin header.
+ *
+ * Distinct from validateOriginHeader: this MIDDLEWARE runs first, sets the
+ * CORS response headers (so the browser unwraps the response), and short-
+ * circuits OPTIONS preflights with 204. validateOriginHeader still gates
+ * non-OPTIONS requests on /mcp for DNS-rebinding protection.
+ */
+export function corsMiddleware(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  const origin = req.headers.origin;
+
+  // No Origin header → server-to-server, nothing to do.
+  if (!origin) {
+    if (req.method === "OPTIONS") {
+      // Preflight without Origin shouldn't happen, but respond cleanly.
+      res.status(204).end();
+      return;
+    }
+    return next();
+  }
+
+  const allowed = getCorsAllowedOrigins();
+  const matched = allowed.includes(origin) || CORS_LOCALHOST_PATTERN.test(origin);
+
+  if (matched) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Authorization, Content-Type, MCP-Session-Id, MCP-Protocol-Version, Accept",
+    );
+    res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, WWW-Authenticate");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    // No Access-Control-Allow-Credentials — we use Bearer tokens, not cookies.
+  }
+
+  // Short-circuit preflight regardless of allowlist match. If origin is
+  // not allowed, browser sees a 204 with no ACAO header → blocks the actual
+  // request, which is the correct outcome.
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
+  return next();
+}
+
+app.use(corsMiddleware);
+
 // MCP Spec: Servers MUST validate Origin header to prevent DNS rebinding attacks
 export function validateOriginHeader(
   req: express.Request,

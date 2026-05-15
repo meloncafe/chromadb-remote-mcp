@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-05-15
+
+### Fixed
+
+- **OAuth proxy: 브라우저 CORS 차단으로 인증 실패 (`Failed to fetch`)** — Claude.ai / Cloudflare AI 대시보드 (`dash.cloudflare.com`) 같은 브라우저 클라이언트가 `/oauth/token` POST 시 `Access to fetch ... blocked by CORS policy` 로 차단되던 문제. v2.1.0 의 `validateOriginHeader` 미들웨어는 origin 차단/허용만 했고 CORS 응답 헤더 (`Access-Control-Allow-Origin` 등) 는 설정하지 않아 브라우저가 응답 자체를 unwrap 하지 못함.
+
+### Added
+
+- **`corsMiddleware`** (`src/index.ts`) — 글로벌 등록. preflight (`OPTIONS`) 는 204 + 허용 헤더로 응답하고, 실제 요청에는 `Access-Control-Allow-Origin`, `-Methods`, `-Headers`, `-Expose-Headers`, `-Max-Age` 를 echo back. `Access-Control-Allow-Credentials` 는 설정하지 않음 (Bearer 토큰 사용, 쿠키 미사용).
+- **`getCorsAllowedOrigins()`** — CORS 허용 origin 산출. 기본값:
+  - `https://claude.ai`
+  - `https://api.anthropic.com`
+  - `https://dash.cloudflare.com` (Cloudflare AI Gateway 대시보드)
+  - localhost (모든 포트)
+  - `ALLOWED_ORIGINS` env 의 콤마-구분 항목 자동 병합 (idempotent)
+
+### Notes
+
+- `validateOriginHeader` 는 그대로 유지 — DNS rebinding 방어 + `/mcp` 보호.
+- 단위 테스트 9 건 추가 (`tests/unit/index.test.ts` `corsMiddleware` describe).
+
 ## [2.2.1] - 2026-05-15
 
 ### Fixed
