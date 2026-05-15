@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-05-15
+
+### Fixed
+
+- **OAuth proxy: 1시간마다 재인증 강제 회귀 해소** — Claude Desktop 커넥터(또는 Google ID Token 기반 모든 MCP 클라이언트) 가 v2.1.0 OAuth proxy 사용 시 1 시간마다 전체 OAuth 흐름을 다시 거치던 문제. 6 가지 원인이 동시 작동:
+  - `authorize.ts`: `access_type=online` (Google 이 refresh_token 미발급) → **`offline` 으로 변경**
+  - `authorize.ts`: `prompt=select_account` (returning user 에게 refresh_token 미발급) → **`consent` 로 변경**
+  - `authorize.ts`: scope 에 `offline_access` 부재 → **자동 추가** (override 환경변수와 무관하게 idempotent join)
+  - `register.ts` / `metadata.ts`: `grant_types` 응답에 `refresh_token` 미선언 → **`["authorization_code", "refresh_token"]` 로 확장**
+  - `token.ts`: `grant_type=refresh_token` 거부 (`unsupported_grant_type` 즉시 반환) → **분기 추가, Google `/token` 으로 forward 후 새 id_token + 회전된 refresh_token 응답**
+  - `callback.ts` / `state-store.ts`: Google 응답의 `refresh_token` 저장 안 함 → **`AuthzCodeEntry.refresh_token?` 신규 필드 + `/oauth/token` authorization_code 응답에 포함**
+
+### Migration
+
+- v2.1.x 환경에서 v2.2.1 로 업그레이드하면 **재인증 1 회 필요** (기존 Google grant 에 `offline_access` 가 없으므로). 이후부터 1 시간 만료 시 클라이언트가 자동 refresh 하여 재인증 불필요.
+- `OAUTH_PROXY_GOOGLE_SCOPES` 환경 변수를 명시적으로 설정한 경우에도 `offline_access` 가 자동 append 됨 (idempotent — 이미 포함되어 있으면 중복 추가 안 함).
+
 ## [2.2.0] - 2026-05-15
 
 ### 신규 도구

@@ -4,12 +4,25 @@ import { resolveOAuthBaseUrl } from "./metadata.js";
 
 const GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
+/**
+ * Returns the scope string sent to Google's authorize endpoint.
+ *
+ * Always includes Google's `openid email profile` baseline plus any
+ * extra scopes from OAUTH_PROXY_GOOGLE_SCOPES. v2.2.1 also requests
+ * the OIDC `offline_access` scope so that Google issues a refresh_token
+ * on first consent — without it, the access_type=offline parameter
+ * alone is not sufficient on returning sessions and the user has to
+ * re-authenticate every hour when the id_token expires.
+ */
 function getGoogleScopes(): string {
   const raw = process.env.OAUTH_PROXY_GOOGLE_SCOPES;
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    return raw.trim();
-  }
-  return "openid email profile";
+  const base = (typeof raw === "string" && raw.trim().length > 0)
+    ? raw.trim()
+    : "openid email profile";
+  // Idempotent join: append "offline_access" only if absent.
+  const tokens = new Set(base.split(/\s+/).filter(Boolean));
+  tokens.add("offline_access");
+  return Array.from(tokens).join(" ");
 }
 
 /**
@@ -123,8 +136,16 @@ export function authorizeHandler(req: Request, res: Response): void {
     response_type: "code",
     scope: getGoogleScopes(),
     state: proxy_state,
-    access_type: "online",
-    prompt: "select_account",
+    // v2.2.1: request long-lived refresh_token. Combined with
+    // offline_access scope above, Google returns refresh_token
+    // on the FIRST consent. Subsequent visits reuse it silently.
+    access_type: "offline",
+    // `consent` forces the consent screen on every authorize call,
+    // which is required by Google to (re-)issue a refresh_token if
+    // the user has previously authorized this app on a different
+    // device or with different scopes. Without it, returning users
+    // get a code that exchanges for an id_token but no refresh_token.
+    prompt: "consent",
   });
 
   res.redirect(302, `${GOOGLE_AUTHORIZE_URL}?${params.toString()}`);

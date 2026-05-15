@@ -57,6 +57,12 @@ export interface AuthzCodeEntry {
   code_challenge: string;
   code_challenge_method: "S256";
   id_token: string;
+  /**
+   * Google refresh_token (long-lived). Issued only when the authorize
+   * step requested access_type=offline. Optional so v2.1.x flows
+   * (without offline_access) still work — they just won't roll over.
+   */
+  refresh_token?: string;
   scope: string;
   expires_in: number;
   expires_at: number;

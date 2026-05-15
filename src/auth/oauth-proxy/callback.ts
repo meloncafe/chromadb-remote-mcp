@@ -7,6 +7,13 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 interface GoogleTokenResponse {
   access_token: string;
   id_token: string;
+  /**
+   * Google issues refresh_token only when the original authorize used
+   * access_type=offline + (offline_access scope OR prompt=consent).
+   * v2.2.1 requests all three so this should always be present on
+   * first-time consent.
+   */
+  refresh_token?: string;
   expires_in: number;
   scope: string;
   token_type: string;
@@ -119,6 +126,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     code_challenge: stateEntry.code_challenge,
     code_challenge_method: "S256",
     id_token: tokenJson.id_token,
+    ...(tokenJson.refresh_token && { refresh_token: tokenJson.refresh_token }),
     scope: tokenJson.scope ?? stateEntry.scope,
     expires_in: tokenJson.expires_in ?? 3600,
   });

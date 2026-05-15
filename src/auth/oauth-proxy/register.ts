@@ -46,7 +46,7 @@ export function registerHandler(req: Request, res: Response): void {
     client_id_issued_at: entry.client_id_issued_at,
     redirect_uris: entry.redirect_uris,
     token_endpoint_auth_method: entry.token_endpoint_auth_method,
-    grant_types: ["authorization_code"],
+    grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
   });
 }

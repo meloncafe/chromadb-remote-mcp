@@ -27,12 +27,15 @@ export function authServerMetadataHandler(req: Request, res: Response): void {
     token_endpoint: `${base}/oauth/token`,
     registration_endpoint: `${base}/oauth/register`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: (process.env.OIDC_SCOPES || "openid,email,profile")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
+    scopes_supported: Array.from(new Set(
+      (process.env.OIDC_SCOPES || "openid,email,profile")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .concat(["offline_access"]),
+    )),
   });
 }
