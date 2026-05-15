@@ -409,26 +409,60 @@ claude mcp list
 
 ---
 
-## Available Tools
+## Available Tools (v2.2.0)
 
-The MCP server provides these tools for Claude:
+The MCP server provides these tools for Claude. v2.2.0 expands coverage to 30 tools across collection / document / search / fork / client-info / admin / destructive groups.
 
 ### Collection Management
 
-- `chroma_list_collections` - List all collections
-- `chroma_create_collection` - Create a new collection
+- `chroma_list_collections` - List all collections (with `limit` / `offset`)
+- `chroma_create_collection` - Create a new collection (`configuration` / `schema` optional)
+- `chroma_get_or_create_collection` - Idempotent create-or-get (v2.2.0)
+- `chroma_modify_collection` - Rename / change metadata or configuration (v2.2.0)
 - `chroma_delete_collection` - Delete a collection
 - `chroma_get_collection_info` - Get collection metadata
-- `chroma_get_collection_count` - Get document count
+- `chroma_get_collection_count` - Get document count (`read_level` optional)
+- `chroma_count_collections` - Total collection count (v2.2.0)
 - `chroma_peek_collection` - Preview collection contents
 
 ### Document Operations
 
-- `chroma_add_documents` - Add documents with embeddings
-- `chroma_query_documents` - Semantic search (vector similarity)
-- `chroma_get_documents` - Retrieve documents by ID or filter
-- `chroma_update_documents` - Update existing documents
-- `chroma_delete_documents` - Delete documents
+- `chroma_add_documents` - Add documents (with `uris` for multi-modal)
+- `chroma_upsert_documents` - Idempotent insert-or-update (v2.2.0)
+- `chroma_query_documents` - Semantic search (with `query_uris` / `ids` pre-filter)
+- `chroma_get_documents` - Retrieve documents (`read_level` optional)
+- `chroma_update_documents` - Update existing documents (with `embeddings` / `uris`)
+- `chroma_delete_documents` - Delete by `ids` and/or `where` / `where_document` filter
+
+### Server Info (v2.2.0)
+
+- `chroma_heartbeat` - Server heartbeat (nanosecond timestamp)
+- `chroma_get_server_version` - Server version string
+- `chroma_get_max_batch_size` - Max batch size (for client-side splitting)
+- `chroma_get_user_identity` - Current tenant + databases
+
+### Distributed/Cloud-only — opt-in (`CHROMA_DISTRIBUTED_TOOLS_ENABLED=true`)
+
+These 4 tools require ChromaDB's **distributed executor** (the executor is the chromadb-server-internal frontend layer, not an algorithmic distribution requirement). The single-node open-source server (`chromadb/chroma:latest` docker) ships with the **local executor**, which has these methods hard-coded as `unimplemented` in [`rust/frontend/src/executor/local.rs`](https://github.com/chroma-core/chroma/blob/main/rust/frontend/src/executor/local.rs) and [`rust/types/src/api_types.rs`](https://github.com/chroma-core/chroma/blob/main/rust/types/src/api_types.rs). To use them you need either Chroma Cloud (`CloudClient`) or a self-hosted distributed Chroma deployment (Kubernetes multi-component: frontend + query executor + WAL + compactor + object storage).
+
+Hidden by default so single-node deployments don't waste LLM context on tools that always return `"not implemented for local executor"` / `"unsupported for local chroma"`.
+
+- `chroma_search` - Hybrid dense + sparse search (RRF). The algorithm itself works on a single node; chromadb open-source simply hasn't implemented the `search()` endpoint in the local executor.
+- `chroma_fork_collection` - Zero-copy fork (segment-level operation on object storage — architecturally requires the distributed compactor/storage stack).
+- `chroma_get_fork_count` - Fork metadata lookup (depends on the distributed metadata store).
+- `chroma_get_indexing_status` - WAL offset + compactor index progress (requires the distributed WAL/compactor services).
+
+### Admin — opt-in (`CHROMA_ADMIN_TOOLS_ENABLED=true`)
+
+- `chroma_admin_create_database` / `chroma_admin_get_database` / `chroma_admin_list_databases`
+- `chroma_admin_create_tenant` / `chroma_admin_get_tenant`
+
+### Destructive — opt-in (`CHROMA_ALLOW_DESTRUCTIVE_OPS=true`)
+
+Calls emit a `[DESTRUCTIVE]` audit line.
+
+- `chroma_reset_database` - Reset entire database (irreversible)
+- `chroma_admin_delete_database` - Delete a database (requires both flags)
 
 ---
 

@@ -409,26 +409,60 @@ claude mcp list
 
 ---
 
-## 사용 가능한 도구
+## 사용 가능한 도구 (v2.2.0)
 
-MCP 서버는 Claude용으로 다음 도구를 제공합니다:
+MCP 서버는 Claude용으로 다음 도구를 제공합니다. v2.2.0 에서 ChromaDB 3.x SDK 표면 전체로 도구를 30 개로 확장했습니다.
 
 ### 컬렉션 관리
 
-- `chroma_list_collections` - 모든 컬렉션 목록 조회
-- `chroma_create_collection` - 새 컬렉션 생성
+- `chroma_list_collections` - 모든 컬렉션 목록 (`limit` / `offset` 지원)
+- `chroma_create_collection` - 새 컬렉션 생성 (`configuration` / `schema` 옵션)
+- `chroma_get_or_create_collection` - 멱등 생성-또는-조회 (v2.2.0)
+- `chroma_modify_collection` - 이름 변경 / 메타 / configuration 수정 (v2.2.0)
 - `chroma_delete_collection` - 컬렉션 삭제
 - `chroma_get_collection_info` - 컬렉션 메타데이터 조회
-- `chroma_get_collection_count` - 문서 개수 조회
+- `chroma_get_collection_count` - 문서 개수 (`read_level` 옵션)
+- `chroma_count_collections` - 컬렉션 총 개수 (v2.2.0)
 - `chroma_peek_collection` - 컬렉션 내용 미리보기
 
 ### 문서 작업
 
-- `chroma_add_documents` - 임베딩과 함께 문서 추가
-- `chroma_query_documents` - 의미 검색 (벡터 유사도)
-- `chroma_get_documents` - ID 또는 필터로 문서 조회
-- `chroma_update_documents` - 기존 문서 수정
-- `chroma_delete_documents` - 문서 삭제
+- `chroma_add_documents` - 문서 추가 (`uris` 멀티모달 지원)
+- `chroma_upsert_documents` - 멱등 insert-or-update (v2.2.0)
+- `chroma_query_documents` - 의미 검색 (`query_uris` / `ids` 사전 필터)
+- `chroma_get_documents` - 문서 조회 (`read_level` 옵션)
+- `chroma_update_documents` - 문서 수정 (`embeddings` / `uris` 옵션)
+- `chroma_delete_documents` - `ids` / `where` / `where_document` 필터 삭제
+
+### 서버 정보 (v2.2.0)
+
+- `chroma_heartbeat` - 서버 헬스체크 (nanosecond)
+- `chroma_get_server_version` - 서버 버전 문자열
+- `chroma_get_max_batch_size` - 최대 배치 크기 (클라이언트 분할용)
+- `chroma_get_user_identity` - 현재 tenant + databases
+
+### Distributed/Cloud 전용 — opt-in (`CHROMA_DISTRIBUTED_TOOLS_ENABLED=true`)
+
+이 4 개 도구는 ChromaDB 서버의 **distributed executor** 가 필요합니다 (알고리즘이 분산 인프라를 요구하는 게 아니라, chromadb 서버 내부 frontend layer 가 두 가지 — local / distributed — 로 분리되어 있고 distributed 쪽에만 구현되어 있다는 의미). 단일 노드 open-source 서버 (`chromadb/chroma:latest` docker) 는 **local executor** 를 사용하며, 4 개 메서드 모두 [`rust/frontend/src/executor/local.rs`](https://github.com/chroma-core/chroma/blob/main/rust/frontend/src/executor/local.rs) / [`rust/types/src/api_types.rs`](https://github.com/chroma-core/chroma/blob/main/rust/types/src/api_types.rs) 에서 hard-coded `unimplemented`. 사용하려면 Chroma Cloud (`CloudClient`) 또는 self-hosted distributed Chroma 배포 (Kubernetes multi-component: frontend + query executor + WAL + compactor + object storage) 가 필요.
+
+단일 노드 배포에서 이 도구들을 노출하면 LLM 이 호출 → `"not implemented for local executor"` / `"unsupported for local chroma"` 응답 → 재시도 루프로 이어져 컨텍스트가 낭비되므로 기본 숨김.
+
+- `chroma_search` - dense + sparse 하이브리드 검색 (RRF). 알고리즘 자체는 단일 노드에서 동작 가능하지만, chromadb open-source 서버가 local executor 에 `search()` endpoint 를 미구현.
+- `chroma_fork_collection` - zero-copy fork (object storage segment-level 작업 — distributed compactor/storage 스택이 architectural 으로 필요).
+- `chroma_get_fork_count` - fork 메타데이터 조회 (distributed 메타 스토어 의존).
+- `chroma_get_indexing_status` - WAL offset + compactor 인덱스 진행 (distributed WAL/compactor 서비스 의존).
+
+### Admin — opt-in (`CHROMA_ADMIN_TOOLS_ENABLED=true`)
+
+- `chroma_admin_create_database` / `chroma_admin_get_database` / `chroma_admin_list_databases`
+- `chroma_admin_create_tenant` / `chroma_admin_get_tenant`
+
+### 위험 작업 — opt-in (`CHROMA_ALLOW_DESTRUCTIVE_OPS=true`)
+
+호출 시 `[DESTRUCTIVE]` 감사 라인 출력.
+
+- `chroma_reset_database` - 전체 DB 리셋 (irreversible)
+- `chroma_admin_delete_database` - 데이터베이스 삭제 (두 env 모두 필요)
 
 ---
 

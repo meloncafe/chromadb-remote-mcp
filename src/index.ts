@@ -17,7 +17,8 @@ import {
 import {config} from "dotenv";
 import rateLimit from "express-rate-limit";
 import {timingSafeEqual} from "crypto";
-import {createChromaTools, handleChromaTool} from "./chroma-tools.js";
+import {createChromaTools, handleChromaTool, ADMIN_TOOLS_ENABLED, DESTRUCTIVE_OPS_ENABLED} from "./chroma-tools.js";
+import { getAdminClient } from "./admin-client.js";
 import type {ChromaConfig} from "./types.js";
 import {
   resolveEmbeddingProviderConfig,
@@ -276,6 +277,38 @@ export function validateEnvironmentVariables() {
     if (isNaN(timeout) || timeout <= 0) {
       errors.push(
         `❌ Invalid REQUEST_TIMEOUT: ${process.env.REQUEST_TIMEOUT} (must be positive integer in milliseconds)`,
+      );
+    }
+  }
+
+  // R20–R26: AdminClient tools opt-in. Accepted values: "true" / "false" / unset.
+  // Anything else is a configuration error — warn so operators notice, but do
+  // not fail boot (the flag effectively defaults to false on invalid values).
+  if (process.env.CHROMA_ADMIN_TOOLS_ENABLED !== undefined) {
+    const raw = process.env.CHROMA_ADMIN_TOOLS_ENABLED.trim().toLowerCase();
+    if (raw !== "true" && raw !== "false" && raw !== "") {
+      warnings.push(
+        `⚠️  CHROMA_ADMIN_TOOLS_ENABLED has invalid value "${process.env.CHROMA_ADMIN_TOOLS_ENABLED}" — expected "true" or "false". Treating as false (admin tools disabled).`,
+      );
+    }
+  }
+
+  // R25–R26: Destructive operations opt-in. Same accepted-values contract.
+  if (process.env.CHROMA_ALLOW_DESTRUCTIVE_OPS !== undefined) {
+    const raw = process.env.CHROMA_ALLOW_DESTRUCTIVE_OPS.trim().toLowerCase();
+    if (raw !== "true" && raw !== "false" && raw !== "") {
+      warnings.push(
+        `⚠️  CHROMA_ALLOW_DESTRUCTIVE_OPS has invalid value "${process.env.CHROMA_ALLOW_DESTRUCTIVE_OPS}" — expected "true" or "false". Treating as false (destructive ops disabled).`,
+      );
+    }
+  }
+
+  // R5/R6/R7: Distributed-executor tools opt-in. Same accepted-values contract.
+  if (process.env.CHROMA_DISTRIBUTED_TOOLS_ENABLED !== undefined) {
+    const raw = process.env.CHROMA_DISTRIBUTED_TOOLS_ENABLED.trim().toLowerCase();
+    if (raw !== "true" && raw !== "false" && raw !== "") {
+      warnings.push(
+        `⚠️  CHROMA_DISTRIBUTED_TOOLS_ENABLED has invalid value "${process.env.CHROMA_DISTRIBUTED_TOOLS_ENABLED}" — expected "true" or "false". Treating as false (distributed tools disabled — single-node executor assumed).`,
       );
     }
   }
@@ -631,7 +664,50 @@ export async function callToolHandler(request: {
   params: { name: string; arguments?: Record<string, unknown> };
 }) {
   const {name, arguments: args} = request.params;
-  return handleChromaTool(getChromaClient(), name, args || {}, embeddingProviderConfig);
+  const safeArgs = args || {};
+
+  // Destructive tools — gated by CHROMA_ALLOW_DESTRUCTIVE_OPS at boot.
+  // Defense-in-depth: createChromaTools() already omits these from tools/list
+  // when the flag is false, but the runtime guard below catches direct calls
+  // (e.g. via prompts/clients that bypass tools/list).
+  const DESTRUCTIVE_TOOL_NAMES = new Set([
+    "chroma_reset_database",
+    "chroma_admin_delete_database",
+  ]);
+  if (DESTRUCTIVE_TOOL_NAMES.has(name) && !DESTRUCTIVE_OPS_ENABLED) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Tool "${name}" is disabled. Set CHROMA_ALLOW_DESTRUCTIVE_OPS=true to enable destructive operations.`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // AdminClient tools — gated by CHROMA_ADMIN_TOOLS_ENABLED at boot.
+  // The lazy AdminClient is constructed on first admin call. Phase 5 will
+  // extend handleChromaTool to consume the admin client; for now, the import
+  // exists and getAdminClient() is referenced so the linker keeps the symbol.
+  if (name.startsWith("chroma_admin_")) {
+    if (!ADMIN_TOOLS_ENABLED) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Tool "${name}" is disabled. Set CHROMA_ADMIN_TOOLS_ENABLED=true to enable admin tools.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+    // Eagerly resolve the admin client so initialization errors surface here
+    // (Phase 5 handlers will retrieve it via the same singleton).
+    void getAdminClient();
+  }
+
+  return handleChromaTool(getChromaClient(), name, safeArgs, embeddingProviderConfig);
 }
 
 // ============================================================================

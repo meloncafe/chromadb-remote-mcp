@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-05-15
+
+### 신규 도구
+
+- **`chroma_upsert_documents`** — id 충돌 신경 안 쓰고 한 번에 add+update.
+- **`chroma_modify_collection`** — 컬렉션 이름 / 메타 / 인덱스 설정 변경.
+- **`chroma_get_or_create_collection`** — 멱등 생성 (재시도 안전).
+- **`chroma_heartbeat`** / **`chroma_get_server_version`** — 서버 헬스체크 + 버전 확인.
+- **`chroma_count_collections`** — 컬렉션 총 개수 (list 없이 빠른 조회).
+- **`chroma_get_max_batch_size`** — 클라이언트 배치 분할용 한도 조회.
+- **`chroma_get_user_identity`** — 현재 tenant + databases.
+
+### 신규 — Distributed/Cloud 전용 (opt-in 가드)
+
+`CHROMA_DISTRIBUTED_TOOLS_ENABLED=true` 일 때만 노출. chromadb 서버 내부 frontend executor 가 local / distributed 로 분리되어 있고 아래 4 개 메서드 모두 distributed executor 에만 구현되어 있어, 단일 노드 open-source 서버 (`chromadb/chroma:latest`) 에서는 미지원. Chroma Cloud 또는 self-hosted distributed Chroma 배포에서만 동작. 단일 노드에서는 LLM 의 retry 루프 / 컨텍스트 낭비 회피를 위해 기본 숨김:
+
+- **`chroma_search`** — dense + sparse 하이브리드 검색 (ChromaDB 3.x SearchLike).
+- **`chroma_fork_collection`** / **`chroma_get_fork_count`** — zero-copy fork + 포크 수 조회.
+- **`chroma_get_indexing_status`** — WAL / 인덱스 진행 상황 가시화.
+
+### 신규 — Admin (멀티테넌트, opt-in)
+
+`CHROMA_ADMIN_TOOLS_ENABLED=true` 일 때만 노출:
+
+- **`chroma_admin_create_database`** / **`chroma_admin_get_database`** / **`chroma_admin_list_databases`**
+- **`chroma_admin_create_tenant`** / **`chroma_admin_get_tenant`**
+
+### 신규 — 위험 작업 (opt-in 가드)
+
+`CHROMA_ALLOW_DESTRUCTIVE_OPS=true` 일 때만 노출. 호출 시 `[DESTRUCTIVE]` 감사 라인 출력:
+
+- **`chroma_reset_database`** — 전체 DB 리셋 (irreversible).
+- **`chroma_admin_delete_database`** — admin DB 삭제 (admin + destructive 두 env 모두 필요).
+
+### 변경 — 기존 도구 schema 확장 (호환성 유지)
+
+- **`chroma_delete_documents`** — `where` / `where_document` / `limit` 추가. ids 단독 외에 메타필터 단독 삭제 허용.
+- **`chroma_create_collection`** — `configuration` (HNSW/SPANN), `schema` 추가.
+- **`chroma_add_documents`** / **`chroma_update_documents`** — `uris` 추가 (멀티모달). update 는 `embeddings` 도 schema 노출.
+- **`chroma_query_documents`** — `query_uris`, `ids` (사전 필터) 추가.
+- **`chroma_get_documents`** / **`chroma_get_collection_count`** — `read_level` enum (`INDEX_AND_WAL` / `INDEX_ONLY`) 추가.
+- **`chroma_list_collections`** — `limit`, `offset` 기본값 명시 (default 100 / 0).
+
+### 환경 변수
+
+- `CHROMA_ADMIN_TOOLS_ENABLED` (기본 `false`) — admin 도구 그룹 활성화.
+- `CHROMA_ALLOW_DESTRUCTIVE_OPS` (기본 `false`) — 위험 작업 활성화.
+- `CHROMA_DISTRIBUTED_TOOLS_ENABLED` (기본 `false`) — distributed 전용 도구 활성화 (단일 노드 미지원).
+
 ## [2.1.2] - 2026-05-14
 
 ### Fixed

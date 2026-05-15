@@ -1,7 +1,27 @@
-import { ChromaClient } from "chromadb";
-import type { CollectionMetadataV2, EmbeddingProviderConfig } from "./types.js";
+import { ChromaClient, ReadLevel as SdkReadLevel } from "chromadb";
+import { getAdminClient } from "./admin-client.js";
+import type {
+  AdminToolsEnabled,
+  CollectionMetadataV2,
+  DestructiveOpsEnabled,
+  DistributedToolsEnabled,
+  EmbeddingProviderConfig,
+} from "./types.js";
+import { ReadLevel } from "./types.js";
+
+/**
+ * Maps the MCP-facing ReadLevel (uppercase, e.g. "INDEX_AND_WAL") to the
+ * chromadb SDK ReadLevel (lowercase, e.g. "index_and_wal"). MCP clients
+ * see the uppercase form per the tool schema; the SDK requires its own form.
+ */
+function toSdkReadLevel(value: unknown): SdkReadLevel | undefined {
+  if (value === ReadLevel.INDEX_ONLY) return SdkReadLevel.INDEX_ONLY;
+  if (value === ReadLevel.INDEX_AND_WAL) return SdkReadLevel.INDEX_AND_WAL;
+  return undefined;
+}
 import type { EmbeddingProvider } from "./embedding/provider.js";
 import {
+  clearProviderCache,
   getProviderForConfig,
   resolveProviderConfigForCollection,
 } from "./embedding/cache.js";
@@ -37,6 +57,21 @@ const LEGACY_WRITE_TOOLS = new Set([
   "chroma_update_documents",
   "chroma_delete_documents",
 ]);
+
+/**
+ * Cached env flags evaluated once at module load.
+ * Used by createChromaTools() to conditionally register admin / destructive
+ * tools at the schema level. Runtime tool handlers MUST NOT re-read these env
+ * vars — toggle behavior is fixed at boot for predictable tools/list output.
+ */
+export const ADMIN_TOOLS_ENABLED: AdminToolsEnabled =
+  process.env.CHROMA_ADMIN_TOOLS_ENABLED?.trim().toLowerCase() === "true";
+
+export const DESTRUCTIVE_OPS_ENABLED: DestructiveOpsEnabled =
+  process.env.CHROMA_ALLOW_DESTRUCTIVE_OPS?.trim().toLowerCase() === "true";
+
+export const DISTRIBUTED_TOOLS_ENABLED: DistributedToolsEnabled =
+  process.env.CHROMA_DISTRIBUTED_TOOLS_ENABLED?.trim().toLowerCase() === "true";
 
 /**
  * Implements R32: when LEGACY_COLLECTION_COMPAT=true and the collection is a
@@ -305,8 +340,14 @@ export function validateDocumentIds(ids: unknown): { valid: boolean; error?: str
  * @param _chromaClient - ChromaDB client instance (unused, for API consistency).
  * @returns Array of MCP tool definitions with schemas.
  */
-export function createChromaTools(_chromaClient: ChromaClient) {
-  return [
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export function createChromaTools(_chromaClient: ChromaClient): ToolDefinition[] {
+  const tools: ToolDefinition[] = [
     {
       name: "chroma_list_collections",
       description: "List all collection names in the Chroma database with pagination support",
@@ -316,10 +357,12 @@ export function createChromaTools(_chromaClient: ChromaClient) {
           limit: {
             type: "number",
             description: "Optional maximum number of collections to return",
+            default: 100,
           },
           offset: {
             type: "number",
             description: "Optional number of collections to skip before returning results",
+            default: 0,
           },
         },
       },
@@ -337,6 +380,14 @@ export function createChromaTools(_chromaClient: ChromaClient) {
           metadata: {
             type: "object",
             description: "Optional metadata dict to add to the collection",
+          },
+          configuration: {
+            type: "object",
+            description: "Optional collection configuration (HNSW/SPANN params, e.g. { hnsw: { space: 'cosine' } }). Forwarded to ChromaDB SDK as-is.",
+          },
+          schema: {
+            type: "object",
+            description: "Optional Schema object describing index configuration (advanced — see chromadb 3.x Schema docs).",
           },
         },
         required: ["collection_name"],
@@ -384,6 +435,12 @@ export function createChromaTools(_chromaClient: ChromaClient) {
           collection_name: {
             type: "string",
             description: "Name of the collection to count",
+          },
+          read_level: {
+            type: "string",
+            enum: ["INDEX_AND_WAL", "INDEX_ONLY"],
+            default: "INDEX_AND_WAL",
+            description: "Read consistency level. INDEX_ONLY is faster but may miss recent writes.",
           },
         },
         required: ["collection_name"],
@@ -437,6 +494,11 @@ export function createChromaTools(_chromaClient: ChromaClient) {
             items: { type: "object" },
             description: "Optional list of metadata dictionaries for each document",
           },
+          uris: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional list of URIs (one per record) for multi-modal references.",
+          },
         },
         required: ["collection_name", "ids"],
       },
@@ -464,6 +526,16 @@ export function createChromaTools(_chromaClient: ChromaClient) {
             },
             description:
               "List of pre-computed query embeddings (float 2D array). Required in external mode if query_texts are not provided.",
+          },
+          query_uris: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional list of query URIs (multi-modal queries). Forwarded to SDK as queryURIs.",
+          },
+          ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional pre-filter — restrict query to these record IDs only.",
           },
           n_results: {
             type: "number",
@@ -552,6 +624,12 @@ export function createChromaTools(_chromaClient: ChromaClient) {
             description:
               "Optional cursor for pagination. Use nextCursor from previous response to get next page.",
           },
+          read_level: {
+            type: "string",
+            enum: ["INDEX_AND_WAL", "INDEX_ONLY"],
+            default: "INDEX_AND_WAL",
+            description: "Read consistency level. INDEX_ONLY is faster but may miss recent writes.",
+          },
         },
         required: ["collection_name"],
       },
@@ -581,13 +659,26 @@ export function createChromaTools(_chromaClient: ChromaClient) {
             items: { type: "object" },
             description: "Optional list of new metadata dictionaries",
           },
+          embeddings: {
+            type: "array",
+            items: {
+              type: "array",
+              items: { type: "number" },
+            },
+            description: "Optional list of pre-computed embeddings (float 2D array). External-provider mode requires this when documents are provided.",
+          },
+          uris: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional list of URIs (one per record) for multi-modal references.",
+          },
         },
         required: ["collection_name", "ids"],
       },
     },
     {
       name: "chroma_delete_documents",
-      description: "Delete documents from a Chroma collection",
+      description: "Delete documents from a Chroma collection by ids and/or metadata filter",
       inputSchema: {
         type: "object",
         properties: {
@@ -598,13 +689,368 @@ export function createChromaTools(_chromaClient: ChromaClient) {
           ids: {
             type: "array",
             items: { type: "string" },
-            description: "List of document IDs to delete",
+            description: "Optional list of document IDs to delete. At least one of ids, where, where_document must be provided.",
+          },
+          where: {
+            type: "object",
+            description: "Optional metadata filter — delete documents matching these conditions.",
+          },
+          where_document: {
+            type: "object",
+            description: "Optional document content filter — delete documents matching these conditions.",
+          },
+          limit: {
+            type: "number",
+            description: "Optional cap on number of records to delete. Only valid when used with where or where_document filters.",
+          },
+        },
+        required: ["collection_name"],
+      },
+    },
+    {
+      name: "chroma_upsert_documents",
+      description: "Insert or update documents in a Chroma collection (idempotent on ids)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          collection_name: {
+            type: "string",
+            description: "Name of the collection to upsert documents into",
+          },
+          documents: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of text documents to upsert (external mode: optional if embeddings given)",
+          },
+          embeddings: {
+            type: "array",
+            items: {
+              type: "array",
+              items: { type: "number" },
+            },
+            description: "List of pre-computed embeddings (float 2D array). Required in external mode if documents are not provided.",
+          },
+          ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of IDs for the documents (required)",
+          },
+          metadatas: {
+            type: "array",
+            items: { type: "object" },
+            description: "Optional list of metadata dictionaries for each document",
+          },
+          uris: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional list of URIs (one per record) for multi-modal references.",
           },
         },
         required: ["collection_name", "ids"],
       },
     },
+    {
+      name: "chroma_modify_collection",
+      description: "Modify a Chroma collection's name, metadata, or configuration",
+      inputSchema: {
+        type: "object",
+        properties: {
+          collection_name: {
+            type: "string",
+            description: "Current name of the collection to modify",
+          },
+          new_name: {
+            type: "string",
+            description: "Optional new name for the collection",
+          },
+          metadata: {
+            type: "object",
+            description: "Optional new metadata for the collection",
+          },
+          configuration: {
+            type: "object",
+            description: "Optional new configuration settings (UpdateCollectionConfiguration)",
+          },
+        },
+        required: ["collection_name"],
+      },
+    },
+    {
+      name: "chroma_get_or_create_collection",
+      description: "Get an existing Chroma collection or create it if it does not exist (idempotent)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          collection_name: {
+            type: "string",
+            description: "Name of the collection to get or create",
+          },
+          metadata: {
+            type: "object",
+            description: "Optional metadata dict (used only if creating)",
+          },
+          configuration: {
+            type: "object",
+            description: "Optional collection configuration (HNSW/SPANN params, used only if creating)",
+          },
+          schema: {
+            type: "object",
+            description: "Optional Schema object (used only if creating)",
+          },
+        },
+        required: ["collection_name"],
+      },
+    },
+    {
+      name: "chroma_heartbeat",
+      description: "Send a heartbeat request to the Chroma server (returns nanosecond timestamp)",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "chroma_get_server_version",
+      description: "Get the version of the connected Chroma server",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "chroma_count_collections",
+      description: "Get the total number of collections in the current Chroma database",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "chroma_get_max_batch_size",
+      description: "Get the maximum batch size supported by the Chroma server (for client-side splitting)",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "chroma_get_user_identity",
+      description: "Get the current user identity (tenant + accessible databases)",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
   ];
+
+  if (DISTRIBUTED_TOOLS_ENABLED) {
+    tools.push(
+      {
+        name: "chroma_search",
+        description: "Hybrid search on a Chroma collection (dense + sparse via SearchLike payload)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            collection_name: {
+              type: "string",
+              description: "Name of the collection to search",
+            },
+            payload: {
+              description: "SearchLike payload — single object or array of payloads. Forwarded to collection.search() as-is.",
+              oneOf: [
+                { type: "object" },
+                { type: "array", items: { type: "object" } },
+              ],
+            },
+            read_level: {
+              type: "string",
+              enum: ["INDEX_AND_WAL", "INDEX_ONLY"],
+              default: "INDEX_AND_WAL",
+              description: "Read consistency level. INDEX_ONLY is faster but may miss recent writes.",
+            },
+          },
+          required: ["collection_name", "payload"],
+        },
+      },
+      {
+        name: "chroma_fork_collection",
+        description: "Create a zero-copy fork of a Chroma collection with a new name",
+        inputSchema: {
+          type: "object",
+          properties: {
+            collection_name: {
+              type: "string",
+              description: "Name of the source collection to fork",
+            },
+            new_name: {
+              type: "string",
+              description: "Name for the new forked collection",
+            },
+          },
+          required: ["collection_name", "new_name"],
+        },
+      },
+      {
+        name: "chroma_get_fork_count",
+        description: "Get the number of forks for a Chroma collection",
+        inputSchema: {
+          type: "object",
+          properties: {
+            collection_name: {
+              type: "string",
+              description: "Name of the collection to query fork count for",
+            },
+          },
+          required: ["collection_name"],
+        },
+      },
+      {
+        name: "chroma_get_indexing_status",
+        description: "Get the indexing status of a Chroma collection (WAL/index progress)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            collection_name: {
+              type: "string",
+              description: "Name of the collection to inspect indexing status",
+            },
+          },
+          required: ["collection_name"],
+        },
+      },
+    );
+  }
+
+  // Phase 1 — conditional schema-level filtering for admin / destructive tools.
+  // Tool definitions for these groups are pushed in later phases (R20–R26),
+  // gated by the cached env flags below. Keeping the structure now avoids
+  // re-touching createChromaTools() in every subsequent phase.
+  if (ADMIN_TOOLS_ENABLED) {
+    tools.push(
+      {
+        name: "chroma_admin_create_database",
+        description: "Create a new database within a tenant (admin operation)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Name of the database to create",
+            },
+            tenant: {
+              type: "string",
+              description: "Tenant that will own the database",
+            },
+          },
+          required: ["name", "tenant"],
+        },
+      },
+      {
+        name: "chroma_admin_get_database",
+        description: "Retrieve information about a specific database (admin operation)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Name of the database to retrieve",
+            },
+            tenant: {
+              type: "string",
+              description: "Tenant that owns the database",
+            },
+          },
+          required: ["name", "tenant"],
+        },
+      },
+      {
+        name: "chroma_admin_list_databases",
+        description: "List all databases within a tenant (admin operation)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            tenant: {
+              type: "string",
+              description: "Tenant whose databases to list",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum number of databases to return (default 100)",
+              default: 100,
+            },
+            offset: {
+              type: "number",
+              description: "Number of databases to skip (default 0)",
+              default: 0,
+            },
+          },
+          required: ["tenant"],
+        },
+      },
+      {
+        name: "chroma_admin_create_tenant",
+        description: "Create a new tenant (admin operation)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Name of the tenant to create",
+            },
+          },
+          required: ["name"],
+        },
+      },
+      {
+        name: "chroma_admin_get_tenant",
+        description: "Retrieve information about a specific tenant (admin operation)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Name of the tenant to retrieve",
+            },
+          },
+          required: ["name"],
+        },
+      },
+    );
+  }
+
+  if (DESTRUCTIVE_OPS_ENABLED) {
+    tools.push({
+      name: "chroma_reset_database",
+      description: "[DESTRUCTIVE] Reset the entire Chroma database — irreversible, deletes all collections and data",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    });
+  }
+
+  if (ADMIN_TOOLS_ENABLED && DESTRUCTIVE_OPS_ENABLED) {
+    tools.push({
+      name: "chroma_admin_delete_database",
+      description: "[DESTRUCTIVE] Delete a database and all its data (admin operation, irreversible)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Name of the database to delete",
+          },
+          tenant: {
+            type: "string",
+            description: "Tenant that owns the database",
+          },
+        },
+        required: ["name", "tenant"],
+      },
+    });
+  }
+
+  return tools;
 }
 
 /**
@@ -655,6 +1101,8 @@ export async function handleChromaTool(
         await chromaClient.createCollection({
           name: args.collection_name,
           metadata: buildCollectionMetadata(serverProviderCfg, args.metadata),
+          ...(args.configuration !== undefined && { configuration: args.configuration }),
+          ...(args.schema !== undefined && { schema: args.schema }),
         });
         return {
           content: [
@@ -717,7 +1165,10 @@ export async function handleChromaTool(
         if (compatGuard !== null) {
           return compatGuard;
         }
-        const count = await collection.count();
+        const sdkReadLevel = toSdkReadLevel(args.read_level);
+        const count = await collection.count(
+          sdkReadLevel !== undefined ? { readLevel: sdkReadLevel } : undefined,
+        );
         return {
           content: [
             {
@@ -813,6 +1264,7 @@ export async function handleChromaTool(
           documents: hasDocuments ? args.documents : undefined,
           embeddings: finalEmbeddings,
           metadatas: args.metadatas,
+          ...(Array.isArray(args.uris) && args.uris.length > 0 && { uris: args.uris }),
         });
 
         const count = hasDocuments ? args.documents.length : args.embeddings.length;
@@ -887,6 +1339,8 @@ export async function handleChromaTool(
         const results = await collection.query({
           queryTexts: hasQueryTexts && !finalQueryEmbeddings ? args.query_texts : undefined,
           queryEmbeddings: finalQueryEmbeddings,
+          ...(Array.isArray(args.query_uris) && args.query_uris.length > 0 && { queryURIs: args.query_uris }),
+          ...(Array.isArray(args.ids) && args.ids.length > 0 && { ids: args.ids }),
           nResults: args.n_results || 5,
           where: args.where,
           whereDocument: args.where_document,
@@ -980,6 +1434,7 @@ export async function handleChromaTool(
         // Get total count for pagination metadata
         const totalCount = await collection.count();
 
+        const sdkReadLevel = toSdkReadLevel(args.read_level);
         const results = await collection.get({
           ids: args.ids,
           where: args.where,
@@ -987,6 +1442,7 @@ export async function handleChromaTool(
           include: args.include || ["documents", "metadatas"],
           limit,
           offset,
+          ...(sdkReadLevel !== undefined && { readLevel: sdkReadLevel }),
         });
 
         // Add pagination metadata
@@ -1082,6 +1538,7 @@ export async function handleChromaTool(
           documents: hasDocuments ? args.documents : undefined,
           embeddings: finalEmbeddings,
           metadatas: args.metadatas,
+          ...(Array.isArray(args.uris) && args.uris.length > 0 && { uris: args.uris }),
         });
         return {
           content: [
@@ -1094,6 +1551,72 @@ export async function handleChromaTool(
       }
 
       case "chroma_delete_documents": {
+        const hasIds = Array.isArray(args.ids) && args.ids.length > 0;
+        const hasWhere = args.where !== undefined && args.where !== null;
+        const hasWhereDocument = args.where_document !== undefined && args.where_document !== null;
+
+        if (!hasIds && !hasWhere && !hasWhereDocument) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Error: at least one of ids, where, where_document must be provided",
+              },
+            ],
+          };
+        }
+
+        if (hasIds) {
+          const idsValidation = validateDocumentIds(args.ids);
+          if (!idsValidation.valid) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: ${idsValidation.error}`,
+                },
+              ],
+            };
+          }
+        }
+
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
+        const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
+        const compatGuard = handleLegacyCompat(matchResult, toolName);
+        if (compatGuard !== null) {
+          return compatGuard;
+        }
+
+        await collection.delete({
+          ...(hasIds && { ids: args.ids }),
+          ...(hasWhere && { where: args.where }),
+          ...(hasWhereDocument && { whereDocument: args.where_document }),
+          ...(typeof args.limit === "number" && { limit: args.limit }),
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Deleted documents from collection '${args.collection_name}' (ids=${hasIds}, where=${hasWhere}, where_document=${hasWhereDocument})`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_upsert_documents": {
+        const nameValidation = validateCollectionName(args.collection_name);
+        if (!nameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${nameValidation.error}`,
+              },
+            ],
+          };
+        }
+
         const idsValidation = validateDocumentIds(args.ids);
         if (!idsValidation.valid) {
           return {
@@ -1112,12 +1635,444 @@ export async function handleChromaTool(
         if (compatGuard !== null) {
           return compatGuard;
         }
-        await collection.delete({ ids: args.ids });
+
+        const hasDocuments = Array.isArray(args.documents) && args.documents.length > 0;
+        const hasEmbeddings = Array.isArray(args.embeddings) && args.embeddings.length > 0;
+
+        if (!hasDocuments && !hasEmbeddings) {
+          return {
+            content: [{ type: "text", text: "Error: documents or embeddings required" }],
+          };
+        }
+
+        if (hasEmbeddings) {
+          const dimError = validateEmbeddingDimensions(args.embeddings, collection.metadata);
+          if (dimError) {
+            return { content: [{ type: "text", text: dimError }] };
+          }
+        }
+
+        const effectiveProviderId =
+          (collection.metadata?.embedding_provider as string | undefined) ||
+          serverProviderCfg.provider;
+        if (effectiveProviderId === "external" && hasDocuments && !hasEmbeddings) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "Error: External embedding mode requires pre-computed embeddings. " +
+                  "Pass the 'embeddings' argument (a 2D float array sized to the collection's embedding_dimensions) " +
+                  "instead of 'documents' only.",
+              },
+            ],
+          };
+        }
+
+        const collectionCfg = resolveProviderConfigForCollection(
+          serverProviderCfg,
+          collection.metadata,
+        );
+        const provider: EmbeddingProvider = getProviderForConfig(collectionCfg);
+
+        let finalEmbeddings: number[][] | undefined;
+        const taskType: "document" = "document";
+        if (hasEmbeddings) {
+          finalEmbeddings = args.embeddings;
+        } else if (shouldServerEmbed(provider.getProviderId())) {
+          finalEmbeddings = await provider.embed(args.documents, taskType);
+        }
+
+        await collection.upsert({
+          ids: args.ids,
+          documents: hasDocuments ? args.documents : undefined,
+          embeddings: finalEmbeddings,
+          metadatas: args.metadatas,
+          ...(Array.isArray(args.uris) && args.uris.length > 0 && { uris: args.uris }),
+        });
+
+        const count = hasDocuments ? args.documents.length : args.embeddings.length;
         return {
           content: [
             {
               type: "text",
-              text: `Deleted ${args.ids.length} documents from collection '${args.collection_name}'`,
+              text: `Upserted ${count} documents in collection '${args.collection_name}'`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_modify_collection": {
+        const nameValidation = validateCollectionName(args.collection_name);
+        if (!nameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${nameValidation.error}`,
+              },
+            ],
+          };
+        }
+
+        if (args.new_name !== undefined) {
+          const newNameValidation = validateCollectionName(args.new_name);
+          if (!newNameValidation.valid) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: ${newNameValidation.error}`,
+                },
+              ],
+            };
+          }
+        }
+
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
+
+        await collection.modify({
+          ...(args.new_name !== undefined && { name: args.new_name }),
+          ...(args.metadata !== undefined && { metadata: args.metadata }),
+          ...(args.configuration !== undefined && { configuration: args.configuration }),
+        });
+
+        // R3: name change requires invalidating any cached provider state keyed off
+        // collection identity. The provider cache is keyed by provider::model::dim
+        // rather than collection name, so a full clear is the safe conservative
+        // option — subsequent calls re-resolve providers cleanly.
+        if (args.new_name !== undefined) {
+          clearProviderCache();
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Modified collection '${args.collection_name}'${args.new_name !== undefined ? ` (renamed to '${args.new_name}')` : ""}`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_get_or_create_collection": {
+        const nameValidation = validateCollectionName(args.collection_name);
+        if (!nameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${nameValidation.error}`,
+              },
+            ],
+          };
+        }
+
+        await chromaClient.getOrCreateCollection({
+          name: args.collection_name,
+          metadata: buildCollectionMetadata(serverProviderCfg, args.metadata),
+          ...(args.configuration !== undefined && { configuration: args.configuration }),
+          ...(args.schema !== undefined && { schema: args.schema }),
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Collection '${args.collection_name}' is ready (created or already existed)`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_search": {
+        const nameValidation = validateCollectionName(args.collection_name);
+        if (!nameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${nameValidation.error}`,
+              },
+            ],
+          };
+        }
+
+        if (args.payload === undefined || args.payload === null) {
+          return {
+            content: [{ type: "text", text: "Error: payload is required" }],
+          };
+        }
+
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
+        const sdkReadLevel = toSdkReadLevel(args.read_level);
+        const results = await collection.search(
+          args.payload,
+          sdkReadLevel !== undefined ? { readLevel: sdkReadLevel } : undefined,
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(results, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_fork_collection": {
+        const nameValidation = validateCollectionName(args.collection_name);
+        if (!nameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${nameValidation.error}`,
+              },
+            ],
+          };
+        }
+
+        const newNameValidation = validateCollectionName(args.new_name);
+        if (!newNameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${newNameValidation.error}`,
+              },
+            ],
+          };
+        }
+
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
+        const forked = await collection.fork({ name: args.new_name });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Forked collection '${args.collection_name}' to '${forked.name}'`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_get_fork_count": {
+        const nameValidation = validateCollectionName(args.collection_name);
+        if (!nameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${nameValidation.error}`,
+              },
+            ],
+          };
+        }
+
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
+        const count = await collection.forkCount();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ collection_name: args.collection_name, fork_count: count }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_get_indexing_status": {
+        const nameValidation = validateCollectionName(args.collection_name);
+        if (!nameValidation.valid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${nameValidation.error}`,
+              },
+            ],
+          };
+        }
+
+        const collection = await chromaClient.getCollection({ name: args.collection_name });
+        const status = await collection.getIndexingStatus();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(status, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_heartbeat": {
+        const nanos = await chromaClient.heartbeat();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ heartbeat_ns: nanos }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_get_server_version": {
+        const version = await chromaClient.version();
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Chroma server version: ${version}`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_count_collections": {
+        const count = await chromaClient.countCollections();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ collection_count: count }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_get_max_batch_size": {
+        const maxBatchSize = await chromaClient.getMaxBatchSize();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ max_batch_size: maxBatchSize }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_get_user_identity": {
+        const identity = await chromaClient.getUserIdentity();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(identity, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_admin_create_database": {
+        await getAdminClient().createDatabase({
+          name: args.name,
+          tenant: args.tenant,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Database '${args.name}' created in tenant '${args.tenant}'`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_admin_get_database": {
+        const db = await getAdminClient().getDatabase({
+          name: args.name,
+          tenant: args.tenant,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(db, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_admin_list_databases": {
+        const dbs = await getAdminClient().listDatabases({
+          tenant: args.tenant,
+          ...(typeof args.limit === "number" && { limit: args.limit }),
+          ...(typeof args.offset === "number" && { offset: args.offset }),
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(dbs, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_admin_create_tenant": {
+        await getAdminClient().createTenant({ name: args.name });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Tenant '${args.name}' created`,
+            },
+          ],
+        };
+      }
+
+      case "chroma_admin_get_tenant": {
+        const tenant = await getAdminClient().getTenant({ name: args.name });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ tenant }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "chroma_reset_database": {
+        // E4: stdout audit line for destructive operations.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[DESTRUCTIVE] chroma_reset_database ${new Date().toISOString()} (full database reset — irreversible)`,
+        );
+        await chromaClient.reset();
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Chroma database reset complete. This operation was irreversible — all collections and data have been deleted.",
+            },
+          ],
+        };
+      }
+
+      case "chroma_admin_delete_database": {
+        // E4: stdout audit line for destructive operations.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[DESTRUCTIVE] chroma_admin_delete_database ${new Date().toISOString()} tenant='${args.tenant}' name='${args.name}' (irreversible)`,
+        );
+        await getAdminClient().deleteDatabase({
+          name: args.name,
+          tenant: args.tenant,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Database '${args.name}' deleted from tenant '${args.tenant}' (irreversible)`,
             },
           ],
         };

@@ -1,4 +1,41 @@
-# Migration Guide: v1.x → v2.0
+# Migration Guide
+
+---
+
+## v2.1.x → v2.2.0
+
+### 한 줄 요약
+
+v2.2.0 은 ChromaDB 3.x SDK 표면을 MCP 도구 30 개로 확장합니다. **breaking change 없음** — 기존 도구의 schema 추가 옵션은 모두 optional 이며 v2.1.x 호출은 그대로 동작합니다.
+
+### 새 도구
+
+12 개 신규 도구가 자동 노출됩니다 (별도 설정 없음): `chroma_upsert_documents`, `chroma_modify_collection`, `chroma_get_or_create_collection`, `chroma_search`, `chroma_fork_collection`, `chroma_get_fork_count`, `chroma_get_indexing_status`, `chroma_heartbeat`, `chroma_get_server_version`, `chroma_count_collections`, `chroma_get_max_batch_size`, `chroma_get_user_identity`.
+
+### Admin / Destructive — opt-in 환경 변수
+
+기본 OFF. 필요 시 `.env` 또는 docker-compose 환경에 다음을 추가:
+
+```bash
+CHROMA_ADMIN_TOOLS_ENABLED=true        # admin 도구 5 개 활성화 (R20–R24)
+CHROMA_ALLOW_DESTRUCTIVE_OPS=true      # chroma_reset_database (R25) 활성화
+CHROMA_DISTRIBUTED_TOOLS_ENABLED=true  # distributed 전용 4 개 활성화 (R5/R6/R7)
+# CHROMA_ADMIN_TOOLS_ENABLED + CHROMA_ALLOW_DESTRUCTIVE_OPS 둘 다 true 일 때만 chroma_admin_delete_database (R26) 노출
+```
+
+**`CHROMA_DISTRIBUTED_TOOLS_ENABLED`** — `chroma_search`, `chroma_fork_collection`, `chroma_get_fork_count`, `chroma_get_indexing_status` 4 개 도구를 활성화. 알고리즘이 분산 인프라를 요구해서가 아니라, chromadb 서버 내부 frontend executor 가 local / distributed 두 가지로 분리되어 있고 4 개 메서드 모두 distributed executor에만 구현되어 있기 때문 (소스: [`rust/frontend/src/executor/local.rs`](https://github.com/chroma-core/chroma/blob/main/rust/frontend/src/executor/local.rs), [`rust/types/src/api_types.rs`](https://github.com/chroma-core/chroma/blob/main/rust/types/src/api_types.rs)). 단일 노드 open-source 서버 (`chromadb/chroma:latest`) 는 local executor 라서 영원히 미지원 — 사용하려면 **Chroma Cloud** (`CloudClient`) 또는 **self-hosted distributed Chroma** (Kubernetes multi-component) 가 필요. 단일 노드에서 ON 으로 두면 LLM 이 호출 → 미지원 응답 → retry 루프 → 컨텍스트 낭비.
+
+플래그를 끄면 `tools/list` 응답에서 해당 도구가 schema 수준에서 제외되며, 직접 `tools/call` 호출도 런타임 가드에서 거부됩니다.
+
+### 마이그레이션 작업 없음
+
+- 기존 컬렉션 / 데이터 / 메타데이터 / OAuth 설정 그대로 유지.
+- 신규 schema 옵션 (`uris`, `read_level`, `where`/`where_document` for delete, etc.) 은 모두 optional — 기존 호출 인자 변경 불필요.
+- `chroma_delete_documents` 의 `required` 가 `["collection_name"]` 으로 축소되었습니다 — `ids` 필드는 여전히 정상 동작하며, 새로 `where` / `where_document` 단독 호출이 가능합니다.
+
+---
+
+## v1.x → v2.0
 
 This release introduces a breaking collection metadata schema, configurable embedding providers, OAuth 2.1 OIDC authentication, optional reranking and confidence gating. Follow the steps for your language below.
 
