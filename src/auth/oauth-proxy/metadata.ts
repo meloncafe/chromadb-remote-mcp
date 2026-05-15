@@ -30,12 +30,13 @@ export function authServerMetadataHandler(req: Request, res: Response): void {
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: Array.from(new Set(
-      (process.env.OIDC_SCOPES || "openid,email,profile")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .concat(["offline_access"]),
-    )),
+    // Google does not implement OIDC `offline_access` scope (rejects with
+    // invalid_scope). Refresh tokens are issued via access_type=offline +
+    // prompt=consent on the authorize redirect instead. So we advertise only
+    // what Google actually accepts.
+    scopes_supported: (process.env.OIDC_SCOPES || "openid,email,profile")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   });
 }

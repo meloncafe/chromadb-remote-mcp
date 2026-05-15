@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-05-15
+
+### Fixed
+
+- **Google `invalid_scope: offline_access` 회귀 해소** — v2.2.1 이 OIDC 표준 `offline_access` scope 를 자동 추가했으나 **Google OAuth 는 이 scope 를 미지원** (`Some requested scopes were invalid. invalid=[offline_access]`). v2.2.3 은 자동 추가를 제거 — Google 에서 refresh_token 을 받기 위해서는 `access_type=offline` + `prompt=consent` (둘 다 v2.2.1 부터 적용 중) 만으로 충분하다. `OAUTH_PROXY_GOOGLE_SCOPES` env 도 사용자 지정 그대로 사용.
+- **`/.well-known/oauth-authorization-server` `scopes_supported`** — `offline_access` 자동 append 제거. Google 가 실제로 받는 scope 만 광고.
+
+### Migration
+
+- v2.2.1 / v2.2.2 에서 OAuth 흐름이 `invalid_scope` 로 막혔던 사용자는 v2.2.3 배포 후 정상 동작. 추가 작업 불필요.
+- refresh_token 동작은 그대로 — `access_type=offline` + `prompt=consent` 조합으로 Google 이 첫 consent 시 refresh_token 발급, 1 시간 만료 시 클라이언트가 자동 갱신.
+
 ## [2.2.2] - 2026-05-15
 
 ### Fixed

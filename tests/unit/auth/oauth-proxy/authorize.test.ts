@@ -72,7 +72,7 @@ describe("oauth-proxy: GET /oauth/authorize (R4, E4, R5)", () => {
     };
   }
 
-  it("E4: default scope is 'openid email profile' + offline_access when OAUTH_PROXY_GOOGLE_SCOPES unset", () => {
+  it("E4: default scope is 'openid email profile' when OAUTH_PROXY_GOOGLE_SCOPES unset", () => {
     delete process.env.OAUTH_PROXY_GOOGLE_SCOPES;
     const client_id = seedClient();
     const req = mockReq(validQuery(client_id));
@@ -81,11 +81,12 @@ describe("oauth-proxy: GET /oauth/authorize (R4, E4, R5)", () => {
 
     expect(res.statusCode).toBe(302);
     const loc = new URL(res.redirectLocation as string);
-    // v2.2.1: offline_access auto-appended so Google issues a refresh_token.
-    expect(loc.searchParams.get("scope")).toBe("openid email profile offline_access");
+    // v2.2.3: offline_access NOT appended — Google rejects it with invalid_scope.
+    // refresh_token is obtained via access_type=offline + prompt=consent instead.
+    expect(loc.searchParams.get("scope")).toBe("openid email profile");
   });
 
-  it("E4: OAUTH_PROXY_GOOGLE_SCOPES override applied (offline_access still appended)", () => {
+  it("E4: OAUTH_PROXY_GOOGLE_SCOPES override applied", () => {
     process.env.OAUTH_PROXY_GOOGLE_SCOPES = "openid email";
     const client_id = seedClient();
     const req = mockReq(validQuery(client_id));
@@ -94,8 +95,20 @@ describe("oauth-proxy: GET /oauth/authorize (R4, E4, R5)", () => {
 
     expect(res.statusCode).toBe(302);
     const loc = new URL(res.redirectLocation as string);
-    // v2.2.1: offline_access auto-appended regardless of override.
-    expect(loc.searchParams.get("scope")).toBe("openid email offline_access");
+    expect(loc.searchParams.get("scope")).toBe("openid email");
+  });
+
+  it("v2.2.3: scope must NOT contain offline_access (Google rejects with invalid_scope)", () => {
+    delete process.env.OAUTH_PROXY_GOOGLE_SCOPES;
+    const client_id = seedClient();
+    const req = mockReq(validQuery(client_id));
+    const res = mockRes();
+    authorizeHandler(req, res);
+
+    expect(res.statusCode).toBe(302);
+    const loc = new URL(res.redirectLocation as string);
+    const scope = loc.searchParams.get("scope") ?? "";
+    expect(scope.split(/\s+/)).not.toContain("offline_access");
   });
 
   it("v2.2.1: access_type=offline + prompt=consent for refresh_token issuance", () => {

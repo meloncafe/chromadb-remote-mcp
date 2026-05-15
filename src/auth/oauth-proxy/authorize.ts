@@ -7,22 +7,22 @@ const GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 /**
  * Returns the scope string sent to Google's authorize endpoint.
  *
- * Always includes Google's `openid email profile` baseline plus any
- * extra scopes from OAUTH_PROXY_GOOGLE_SCOPES. v2.2.1 also requests
- * the OIDC `offline_access` scope so that Google issues a refresh_token
- * on first consent — without it, the access_type=offline parameter
- * alone is not sufficient on returning sessions and the user has to
- * re-authenticate every hour when the id_token expires.
+ * Returns Google's `openid email profile` baseline (or the
+ * OAUTH_PROXY_GOOGLE_SCOPES override if set).
+ *
+ * NOTE: Do NOT include the OIDC `offline_access` scope here. Google does
+ * not implement that scope and rejects the request with `invalid_scope`.
+ * Refresh tokens are obtained on Google by combining `access_type=offline`
+ * + `prompt=consent` on the authorize redirect (see authorizeHandler), not
+ * by requesting `offline_access`. v2.2.1 incorrectly auto-appended the
+ * scope; v2.2.3 reverted that.
  */
 function getGoogleScopes(): string {
   const raw = process.env.OAUTH_PROXY_GOOGLE_SCOPES;
-  const base = (typeof raw === "string" && raw.trim().length > 0)
-    ? raw.trim()
-    : "openid email profile";
-  // Idempotent join: append "offline_access" only if absent.
-  const tokens = new Set(base.split(/\s+/).filter(Boolean));
-  tokens.add("offline_access");
-  return Array.from(tokens).join(" ");
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw.trim();
+  }
+  return "openid email profile";
 }
 
 /**
