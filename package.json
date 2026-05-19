@@ -71,5 +71,12 @@
   "engines": {
     "node": ">=24.15.0",
     "yarn": ">=4.14.1"
+  },
+  "dependenciesMeta": {
+    "esbuild": { "built": true },
+    "onnxruntime-node": { "built": true },
+    "protobufjs": { "built": true },
+    "sharp": { "built": true },
+    "unrs-resolver": { "built": true }
   }
 }
