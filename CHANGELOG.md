@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-06-03
+
+### Security
+
+- **CVE-2026-45829 (ChromaToast) 대응 하드닝** — ChromaDB Python FastAPI 서버의 pre-auth RCE(사용자 제어 embedding-function config + `trust_remote_code` + 악성 HuggingFace 모델, CVSS 10.0). 본 MCP 게이트웨이는 취약 서버가 아니며 도구 경로 RCE는 chromadb JS SDK 3.4.3 이 중립화하지만(`serializeEmbeddingFunction` 이 MCP 가 넘기는 plain JSON 을 `{type:"legacy"}` 로 떨궈 싱크 미도달), fail-open 인증 + 무필터 catch-all REST 프록시 + unpinned 서버 이미지가 결합한 "조건부 증폭기" 표면을 제거.
+
+### BREAKING
+
+- **fail-closed 부팅 인증** — OIDC 발급자(`OIDC_ISSUERS`/`OIDC_PRESET`)도 `MCP_AUTH_TOKEN` 도 설정되지 않으면 `NODE_ENV` 와 무관하게 부팅을 거부한다 (기존 dev 암묵 fail-open 제거). 개발용 무인증은 `ALLOW_INSECURE_NO_AUTH=true` 명시 옵트인에서만 허용되며, 이 경우에도 `/api/*` REST 프록시 경로는 절대 fail-open 되지 않는다.
+- **OIDC `audience` 필수** — OIDC 발급자가 설정된 경우 `OIDC_AUDIENCE`(또는 OAuth proxy 모드의 `GOOGLE_OAUTH_CLIENT_ID`) 가 필수. 미설정 시 부팅 실패. 이전엔 audience 미설정 시 jose 가 `aud` 검증을 건너뛰어 동일 발급자의 타 클라이언트 토큰이 통과할 수 있었다.
+- **catch-all REST 프록시 기본 비활성** — ChromaDB REST 패스스루는 이제 `CHROMA_REST_PROXY_ENABLED=true` 일 때만 mount 된다 (이전엔 무조건 활성).
+
+### Added
+
+- **`ALLOW_INSECURE_NO_AUTH`** — 개발용 무인증 명시 옵트인 (REST 프록시 경로 제외).
+- **`CHROMA_REST_PROXY_ENABLED`** (기본 OFF) — catch-all ChromaDB REST 프록시 게이트. 활성화 시 체인: `validateOriginHeader`(DNS-rebind 방어) → `oidcAuthMiddleware`(옵트인 무시, 항상 인증) → pathFilter(컬렉션 생성/변형 + `/embedding` 경로 차단) → proxyReq 본문에서 `configuration.embedding_function` strip.
+- **`OAUTH_PROXY_BASE_URL`** — OAuth proxy 활성 시 canonical URL 고정값(필수). `X-Forwarded-Host` 스푸핑을 무시.
+- **`OAUTH_PROXY_REDIRECT_URI_ALLOWLIST`** — DCR `redirect_uris` exact-match allowlist (콤마 구분). 미설정 + proxy 활성 시 모든 DCR 요청 거부.
+- **Google OIDC `azp` 검증** — Google 발급 토큰의 authorized-party claim 을 expected client id 와 추가 대조.
+- **`GET /health/detail`** — 인증 뒤 상세 health(내부 ChromaDB host:port, 연결 상태).
+- **`.github/workflows/chromadb-version-check.yml`** — ChromaDB 서버 이미지가 취약 범위(1.0.0–1.5.8) 이거나 chromadb SDK `< 3.4.3` 이면 CI fail.
+
+### Changed
+
+- **`chroma_modify_collection` 메타데이터 보존** — 클라이언트 `metadata` 를 `buildCollectionMetadata` 로 감싸 서버 소유 `embedding_provider`/`embedding_model`/`embedding_dimensions` 키를 보존(create/get-or-create 경로와 일관). 클라이언트가 임베딩 메타데이터를 우회 변경할 수 없다.
+- **`GET /health` 정보 최소화** — 무인증 응답이 `{status:"ok"}` 만 반환(내부 host:port 미노출). 상세는 `/health/detail`(인증 필요)로 이동.
+- **ChromaDB 서버 이미지 핀** — 3 개 docker-compose 전부 `chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6` 로 고정(CVE 영향 범위 바로 위 첫 안정 릴리스). `.env.example` 에 `CHROMADB_VERSION` 비취약 최소 버전 문서화.
+
+### Migration
+
+- **무인증으로 운영하던 배포는 부팅에 실패한다.** `MCP_AUTH_TOKEN` 또는 OIDC(`OIDC_ISSUERS`/`OIDC_PRESET` + `OIDC_AUDIENCE`) 를 설정하거나, 신뢰된 내부 환경에 한해 `ALLOW_INSECURE_NO_AUTH=true` 를 명시한다.
+- ChromaDB REST 패스스루를 사용 중이었다면 `CHROMA_REST_PROXY_ENABLED=true` 를 명시해야 한다. 대부분의 용례는 MCP 도구로 충분하므로 비활성 유지를 권장.
+- `OIDC_PRESET=google` 등 OIDC 사용자는 `OIDC_AUDIENCE` 를 추가해야 부팅된다.
+- `OAUTH_PROXY_ENABLED=true` 사용자는 `OAUTH_PROXY_BASE_URL` 과 `OAUTH_PROXY_REDIRECT_URI_ALLOWLIST` 를 설정해야 한다.
+
 ## [2.2.3] - 2026-05-15
 
 ### Fixed

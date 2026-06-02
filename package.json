@@ -1,6 +1,6 @@
 {
   "name": "chroma-remote-mcp",
-  "version": "2.2.3",
+  "version": "3.0.0",
   "description": "ChromaDB Remote MCP Server with Streamable HTTP Transport",
   "type": "module",
   "packageManager": "yarn@4.14.1",
