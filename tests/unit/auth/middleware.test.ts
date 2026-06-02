@@ -121,17 +121,44 @@ describe("Phase 10: oidcAuthMiddleware (R26, R27, R31)", () => {
     clearJwksCache();
   });
 
-  it("R27: passes when neither OIDC nor MCP_AUTH_TOKEN configured (dev mode)", async () => {
+  it("R1: fails-closed with 401 when neither OIDC nor MCP_AUTH_TOKEN configured and ALLOW_INSECURE_NO_AUTH not set", async () => {
     delete process.env.OIDC_ISSUERS;
     delete process.env.OIDC_PRESET;
     delete process.env.MCP_AUTH_TOKEN;
+    delete process.env.ALLOW_INSECURE_NO_AUTH;
+    const req = makeReq();
+    const res = makeRes();
+    const next = jest.fn();
+    await oidcAuthMiddleware(req as never, res as never, next as never);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("R1: passes (dev mode) when ALLOW_INSECURE_NO_AUTH=true and no auth configured for non-proxy path", async () => {
+    delete process.env.OIDC_ISSUERS;
+    delete process.env.OIDC_PRESET;
+    delete process.env.MCP_AUTH_TOKEN;
+    process.env.ALLOW_INSECURE_NO_AUTH = "true";
     const req = makeReq();
     const res = makeRes();
     const next = jest.fn();
     await oidcAuthMiddleware(req as never, res as never, next as never);
     expect(next).toHaveBeenCalled();
     expect(res.statusCode).toBe(200);
-    expect(warnSpy.mock.calls.some((c) => String(c[0]).match(/dev mode/))).toBe(true);
+    expect(warnSpy.mock.calls.some((c) => String(c[0]).match(/ALLOW_INSECURE_NO_AUTH/))).toBe(true);
+  });
+
+  it("R1: catch-all proxy path /api/* is always blocked even with ALLOW_INSECURE_NO_AUTH=true", async () => {
+    delete process.env.OIDC_ISSUERS;
+    delete process.env.OIDC_PRESET;
+    delete process.env.MCP_AUTH_TOKEN;
+    process.env.ALLOW_INSECURE_NO_AUTH = "true";
+    const req = { ...makeReq(), path: "/api/v2/collections" };
+    const res = makeRes();
+    const next = jest.fn();
+    await oidcAuthMiddleware(req as never, res as never, next as never);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
   });
 
   it("R27: accepts valid OIDC bearer token", async () => {
@@ -297,7 +324,7 @@ describe("Phase 10: oidcAuthMiddleware (R26, R27, R31)", () => {
       expect(verifySpy.mock.calls[0][2]).toBe("abc");
     });
 
-    it("R4 (c): OAUTH_PROXY_ENABLED 미설정 + OIDC_AUDIENCE 미설정 → audience === undefined", async () => {
+    it("R2: OAUTH_PROXY_ENABLED 미설정 + OIDC_AUDIENCE 미설정 → 401 (audience required)", async () => {
       delete process.env.OIDC_AUDIENCE;
       delete process.env.OAUTH_PROXY_ENABLED;
       process.env.GOOGLE_OAUTH_CLIENT_ID = "xyz"; // 설정해도 OAUTH_PROXY_ENABLED off 이므로 무시
@@ -308,8 +335,10 @@ describe("Phase 10: oidcAuthMiddleware (R26, R27, R31)", () => {
       const next = jest.fn();
       await oidcAuthMiddleware(req as never, res as never, next as never);
 
-      expect(verifySpy).toHaveBeenCalledTimes(1);
-      expect(verifySpy.mock.calls[0][2]).toBeUndefined();
+      // R2: verifyOidcToken must NOT be called when audience is undefined — middleware rejects early
+      expect(verifySpy).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(401);
     });
   });
 });

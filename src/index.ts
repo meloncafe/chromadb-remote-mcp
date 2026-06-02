@@ -230,16 +230,33 @@ export function validateEnvironmentVariables() {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const isProduction = process.env.NODE_ENV === "production";
+  // R1 (CVE-2026-45829): fail-closed authentication gate — NODE_ENV is irrelevant.
+  // At least one auth method (OIDC issuer or MCP_AUTH_TOKEN) must be configured,
+  // OR the operator must explicitly opt-in with ALLOW_INSECURE_NO_AUTH=true.
+  const hasOidcIssuers = !!(process.env.OIDC_ISSUERS || process.env.OIDC_PRESET);
+  const hasMcpToken = !!process.env.MCP_AUTH_TOKEN;
+  const allowInsecure = process.env.ALLOW_INSECURE_NO_AUTH === "true";
 
-  if (isProduction && !process.env.MCP_AUTH_TOKEN) {
-    errors.push("❌ CRITICAL: MCP_AUTH_TOKEN is required in production environment");
+  if (!hasOidcIssuers && !hasMcpToken) {
+    if (allowInsecure) {
+      warnings.push(
+        "⚠️  ALLOW_INSECURE_NO_AUTH=true — no authentication configured. This is insecure and must not be used in production.",
+      );
+    } else {
+      errors.push(
+        "❌ CRITICAL: No authentication configured. Set MCP_AUTH_TOKEN, OIDC_ISSUERS/OIDC_PRESET, or ALLOW_INSECURE_NO_AUTH=true (insecure, dev only).",
+      );
+    }
   }
 
-  if (!process.env.MCP_AUTH_TOKEN && !isProduction) {
-    warnings.push(
-      "⚠️  MCP_AUTH_TOKEN not set - authentication is disabled (not recommended for production)",
-    );
+  // R2 (CVE-2026-45829): OIDC_AUDIENCE is required when OIDC issuers are configured,
+  // unless OAuth Proxy mode is enabled (GOOGLE_OAUTH_CLIENT_ID serves as audience in that case).
+  if (hasOidcIssuers) {
+    const hasAudience = !!(process.env.OIDC_AUDIENCE ||
+      (process.env.OAUTH_PROXY_ENABLED === "true" && process.env.GOOGLE_OAUTH_CLIENT_ID));
+    if (!hasAudience) {
+      errors.push("OIDC_AUDIENCE is required when OIDC issuers are configured");
+    }
   }
 
   // R3: OAuth proxy requires Google client credentials when enabled.

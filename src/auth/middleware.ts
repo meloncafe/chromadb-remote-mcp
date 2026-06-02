@@ -57,7 +57,14 @@ function tryMcpAuthToken(provided: string, expected: string): boolean {
 
 /**
  * Combined auth middleware (R27): pass when OIDC verify succeeds OR
- * MCP_AUTH_TOKEN matches. When neither is configured, allow (dev mode warning).
+ * MCP_AUTH_TOKEN matches.
+ *
+ * R1 (CVE-2026-45829): When neither is configured, fail-closed by default.
+ * ALLOW_INSECURE_NO_AUTH=true opts into dev mode, but only for MCP paths —
+ * catch-all REST proxy paths (/api/*) are never fail-open.
+ *
+ * R2 (CVE-2026-45829): audience is required when OIDC issuers are configured.
+ * Requests are rejected with 401 if audience is unset in OIDC mode.
  */
 export async function oidcAuthMiddleware(
   req: Request,
@@ -66,15 +73,33 @@ export async function oidcAuthMiddleware(
 ): Promise<void> {
   const oidcIssuers = resolveOidcIssuers(process.env.OIDC_ISSUERS, process.env.OIDC_PRESET);
   const mcpToken = process.env.MCP_AUTH_TOKEN;
-  // R4: OIDC_AUDIENCE 미설정 시 OAuth Proxy 모드에 한정해 GOOGLE_OAUTH_CLIENT_ID 자동 채택.
-  // Google ID token 의 aud claim 은 항상 OAuth client_id 와 동일하므로 두 env 중복 입력 불필요.
+  // R2: audience is resolved here; callers must not pass undefined to verifyOidcToken.
+  // OAuth Proxy mode: GOOGLE_OAUTH_CLIENT_ID auto-fills audience when OIDC_AUDIENCE is unset.
   const audience =
     process.env.OIDC_AUDIENCE ||
     (isOAuthProxyEnabled() ? process.env.GOOGLE_OAUTH_CLIENT_ID : undefined);
 
   if (oidcIssuers.length === 0 && !mcpToken) {
+    // R1 (CVE-2026-45829): fail-closed unless ALLOW_INSECURE_NO_AUTH explicitly opts in.
+    // Even with opt-in, catch-all REST proxy paths (/api/*) are never fail-open —
+    // they must always be authenticated or the proxy must be disabled.
+    const allowInsecure = process.env.ALLOW_INSECURE_NO_AUTH === "true";
+    const isProxyPath = req.path?.startsWith("/api/");
+    if (!allowInsecure || isProxyPath) {
+      sendUnauthorized(
+        req,
+        res,
+        "invalid_token",
+        allowInsecure
+          ? "REST proxy path requires authentication regardless of ALLOW_INSECURE_NO_AUTH"
+          : "No authentication configured. Set MCP_AUTH_TOKEN or ALLOW_INSECURE_NO_AUTH=true",
+      );
+      return;
+    }
     if (!req.user) {
-      console.warn("[auth] no OIDC issuers and no MCP_AUTH_TOKEN — request allowed (dev mode)");
+      console.warn(
+        "[auth] ALLOW_INSECURE_NO_AUTH=true — request allowed without authentication (insecure dev mode)",
+      );
     }
     return next();
   }
@@ -103,6 +128,16 @@ export async function oidcAuthMiddleware(
   }
 
   if (oidcIssuers.length > 0) {
+    // R2: audience must be defined before calling verifyOidcToken (non-nullable contract).
+    if (!audience) {
+      sendUnauthorized(
+        req,
+        res,
+        "invalid_token",
+        "OIDC_AUDIENCE is required when OIDC issuers are configured",
+      );
+      return;
+    }
     const result = await verifyOidcToken(token, oidcIssuers, audience);
     if (result.ok) {
       const sub = typeof result.payload.sub === "string" ? result.payload.sub : "unknown";

@@ -44,3 +44,13 @@ export function resolveOidcIssuers(
 }
 
 export const OIDC_PRESETS = PRESETS;
+
+/**
+ * Returns true for preset names that require an explicit audience to be configured.
+ * Used by validateEnvironmentVariables to enforce R2 (CVE-2026-45829) audience check.
+ * Google and Microsoft presets always require audience; GitHub Actions preset does not
+ * (it uses repository-based claims and typically validates via `sub` pattern).
+ */
+export function requiresAudienceForPreset(presetName: string): boolean {
+  return presetName === "google" || presetName === "microsoft";
+}
