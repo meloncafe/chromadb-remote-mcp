@@ -8,9 +8,15 @@
  * Express middleware here is sufficient to satisfy the import at module load.
  */
 import type { Request, Response, NextFunction } from "express";
+import type { ClientRequest } from "http";
 
 export function createProxyMiddleware(_options?: unknown) {
   return function noopProxy(_req: Request, _res: Response, next: NextFunction) {
     next();
   };
+}
+
+// R3: fixRequestBody stub — no-op in unit tests (no real proxy stream to fix).
+export function fixRequestBody(_proxyReq: ClientRequest, _req: Request): void {
+  // no-op in unit tests
 }

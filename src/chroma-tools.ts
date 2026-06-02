@@ -1731,9 +1731,15 @@ export async function handleChromaTool(
 
         const collection = await chromaClient.getCollection({ name: args.collection_name });
 
+        // R5 (CVE-2026-45829): wrap client metadata through buildCollectionMetadata so
+        // server-owned embedding_provider/embedding_model/embedding_dimensions keys are
+        // preserved — identical to the create/get-or-create paths.  If the caller did
+        // not supply metadata, the key is omitted entirely (no-op for existing metadata).
         await collection.modify({
           ...(args.new_name !== undefined && { name: args.new_name }),
-          ...(args.metadata !== undefined && { metadata: args.metadata }),
+          ...(args.metadata !== undefined && {
+            metadata: buildCollectionMetadata(serverProviderCfg, args.metadata),
+          }),
           ...(args.configuration !== undefined && { configuration: args.configuration }),
         });
 

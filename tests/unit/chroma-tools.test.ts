@@ -1170,7 +1170,7 @@ describe("ChromaDB Tools v2.2.0 SDK Coverage", () => {
       expect(result.content[0].text).toContain("Collection name must contain only");
     });
 
-    it("should call collection.modify with new_name + metadata", async () => {
+    it("should call collection.modify with new_name + metadata (R5: server embedding keys preserved)", async () => {
       const result = await handleChromaTool(mockClient, "chroma_modify_collection", {
         collection_name: "test_collection",
         new_name: "renamed_collection",
@@ -1178,10 +1178,20 @@ describe("ChromaDB Tools v2.2.0 SDK Coverage", () => {
       }, SERVER_CFG);
       expect(result.content[0].text).toContain("Modified collection");
       expect(result.content[0].text).toContain("renamed to 'renamed_collection'");
-      expect(mockCollection.modify).toHaveBeenCalledWith({
-        name: "renamed_collection",
-        metadata: { foo: "bar" },
-      });
+      // R5: metadata is wrapped by buildCollectionMetadata — includes server embedding keys
+      // Client key "foo" is preserved; server embedding keys take priority over client embedding keys.
+      expect(mockCollection.modify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "renamed_collection",
+          metadata: expect.objectContaining({
+            foo: "bar",
+            // Server embedding keys are injected (from SERVER_CFG chromadb-default)
+            embedding_provider: expect.any(String),
+            embedding_model: expect.any(String),
+            embedding_dimensions: expect.any(Number),
+          }),
+        }),
+      );
     });
   });
 

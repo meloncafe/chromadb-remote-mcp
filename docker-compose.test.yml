@@ -1,9 +1,9 @@
 services:
   chromadb:
-    image: chromadb/chroma:${CHROMADB_VERSION:-latest}
+    image: chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6
     container_name: chromadb-test
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000" # R6.a: loopback-only — ChromaDB has no built-in auth, do not publish on routable interface
     environment:
       - IS_PERSISTENT=FALSE
       - ANONYMIZED_TELEMETRY=FALSE

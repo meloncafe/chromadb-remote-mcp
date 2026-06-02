@@ -1,0 +1,126 @@
+name: chromadb-version-check
+
+# R4 + E2 (CVE-2026-45829): Verify that all docker-compose files use a non-vulnerable
+# ChromaDB server version (>= 1.5.9) and that the chromadb JS SDK dependency is >= 3.4.3.
+# Vulnerable range: 1.0.0 – 1.5.8 (ChromaToast, CVSS 10.0).
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "docker-compose*.yml"
+      - "package.json"
+      - ".github/workflows/chromadb-version-check.yml"
+  pull_request:
+    paths:
+      - "docker-compose*.yml"
+      - "package.json"
+      - ".github/workflows/chromadb-version-check.yml"
+  workflow_dispatch:
+
+jobs:
+  chromadb-version-check:
+    name: ChromaDB Version Safety Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/chromadb-remote-mcp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # R4: Parse chromadb image tag from all docker-compose files and verify
+      # the version is outside the vulnerable range 1.0.0 – 1.5.8.
+      - name: Check ChromaDB server image version (R4)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VULNERABLE=0
+          FILES=(docker-compose.yml docker-compose.dev.yml docker-compose.test.yml)
+
+          for f in "${FILES[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::warning::$f not found — skipping"
+              continue
+            fi
+
+            # Extract the version tag from lines like:
+            #   image: chromadb/chroma:1.5.9@sha256:...
+            #   image: chromadb/chroma:1.5.9
+            VERSION=$(grep -oE 'chromadb/chroma:[0-9]+\.[0-9]+\.[0-9]+' "$f" | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+
+            if [ -z "$VERSION" ]; then
+              echo "::error file=$f::Could not parse ChromaDB version from $f — ensure image is pinned to a specific version tag (not 'latest')."
+              VULNERABLE=1
+              continue
+            fi
+
+            echo "$f: chromadb/chroma:$VERSION"
+
+            # Semver comparison: fail if 1.0.0 <= VERSION <= 1.5.8
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+            IS_VULNERABLE=0
+            if [ "$MAJOR" -eq 1 ]; then
+              if [ "$MINOR" -lt 5 ]; then
+                IS_VULNERABLE=1
+              elif [ "$MINOR" -eq 5 ] && [ "$PATCH" -le 8 ]; then
+                IS_VULNERABLE=1
+              fi
+            fi
+
+            if [ "$IS_VULNERABLE" -eq 1 ]; then
+              echo "::error file=$f::ChromaDB version $VERSION in $f is within the vulnerable range 1.0.0–1.5.8 (CVE-2026-45829). Upgrade to >= 1.5.9."
+              VULNERABLE=1
+            else
+              echo "  ✓ $VERSION is not in vulnerable range (>= 1.5.9 or outside 1.x)"
+            fi
+          done
+
+          if [ "$VULNERABLE" -ne 0 ]; then
+            echo ""
+            echo "::error::One or more docker-compose files reference a ChromaDB version vulnerable to CVE-2026-45829 (ChromaToast, CVSS 10.0). Update to chromadb/chroma:1.5.9 or later."
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All docker-compose files use a non-vulnerable ChromaDB server version."
+
+      # E2: Verify the chromadb JS SDK dependency lower-bound is >= 3.4.3.
+      - name: Check chromadb JS SDK lower-bound (E2)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RAW=$(node -e "console.log(require('./package.json').dependencies.chromadb)")
+          echo "chromadb SDK dependency: $RAW"
+
+          # Strip semver range prefixes (^, ~, >=, =, v) to get the lower-bound version
+          VERSION=$(echo "$RAW" | sed 's/^[^0-9]*//')
+
+          echo "Parsed lower-bound version: $VERSION"
+
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+          # Require >= 3.4.3
+          FAIL=0
+          if [ "$MAJOR" -lt 3 ]; then
+            FAIL=1
+          elif [ "$MAJOR" -eq 3 ] && [ "$MINOR" -lt 4 ]; then
+            FAIL=1
+          elif [ "$MAJOR" -eq 3 ] && [ "$MINOR" -eq 4 ] && [ "$PATCH" -lt 3 ]; then
+            FAIL=1
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::chromadb JS SDK version $VERSION is below the required minimum 3.4.3. Update the dependency."
+            exit 1
+          fi
+
+          echo "✅ chromadb JS SDK $VERSION satisfies >= 3.4.3."

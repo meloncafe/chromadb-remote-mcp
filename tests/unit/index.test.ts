@@ -17,6 +17,7 @@ import {
   getPingTimeout,
   getPromptHandler,
   healthHandler,
+  healthDetailHandler,
   initChromaClient,
   listPromptsHandler,
   listResourcesHandler,
@@ -643,7 +644,7 @@ describe("index.ts", () => {
     });
   });
 
-  describe("healthHandler", () => {
+  describe("healthHandler (R6.b: minimal unauthenticated response)", () => {
     let req: Partial<Request>;
     let res: Partial<ExpressResponse>;
 
@@ -659,11 +660,62 @@ describe("index.ts", () => {
       resetChromaClient();
     });
 
-    it("should return 200 when ChromaDB is connected", async () => {
+    it("should return {status:'ok'} ONLY when ChromaDB is connected (R6.b: minimal body)", async () => {
       initChromaClient();
       jest.spyOn(getChromaClient(), "heartbeat").mockResolvedValue(123);
 
       await healthHandler(req as Request, res as ExpressResponse);
+
+      expect(res.json).toHaveBeenCalledWith({ status: "ok" });
+      // R6.b: must NOT expose chroma host:port or service name in unauthenticated response
+      const call = (res.json as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+      expect(Object.keys(call).sort()).toEqual(["status"]);
+    });
+
+    it("should return {status:'error'} ONLY when ChromaDB is disconnected (R6.b: minimal body)", async () => {
+      initChromaClient();
+      jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue(new Error("Connection failed"));
+
+      await healthHandler(req as Request, res as ExpressResponse);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({ status: "error" });
+      const call = (res.json as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+      expect(Object.keys(call).sort()).toEqual(["status"]);
+    });
+
+    it("should return {status:'error'} ONLY on unknown error (R6.b: minimal body, no error leak)", async () => {
+      initChromaClient();
+      jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue("string error");
+
+      await healthHandler(req as Request, res as ExpressResponse);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({ status: "error" });
+    });
+  });
+
+  describe("healthDetailHandler (R6.b: authenticated detailed response)", () => {
+    let req: Partial<Request>;
+    let res: Partial<ExpressResponse>;
+
+    beforeEach(() => {
+      req = {};
+      res = {
+        status: jest.fn(() => res as ExpressResponse),
+        json: jest.fn(),
+      } as Partial<ExpressResponse>;
+    });
+
+    afterEach(() => {
+      resetChromaClient();
+    });
+
+    it("should return detailed status with chroma host:port when ChromaDB is connected", async () => {
+      initChromaClient();
+      jest.spyOn(getChromaClient(), "heartbeat").mockResolvedValue(123);
+
+      await healthDetailHandler(req as Request, res as ExpressResponse);
 
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -673,11 +725,11 @@ describe("index.ts", () => {
       );
     });
 
-    it("should return 503 when ChromaDB is disconnected", async () => {
+    it("should return detailed error info when ChromaDB is disconnected", async () => {
       initChromaClient();
       jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue(new Error("Connection failed"));
 
-      await healthHandler(req as Request, res as ExpressResponse);
+      await healthDetailHandler(req as Request, res as ExpressResponse);
 
       expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(
@@ -689,11 +741,11 @@ describe("index.ts", () => {
       );
     });
 
-    it("should handle unknown error", async () => {
+    it("should handle unknown error in detail handler", async () => {
       initChromaClient();
       jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue("string error");
 
-      await healthHandler(req as Request, res as ExpressResponse);
+      await healthDetailHandler(req as Request, res as ExpressResponse);
 
       expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(

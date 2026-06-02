@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import type { Request, Response } from "express";
 import { registerHandler } from "../../../../src/auth/oauth-proxy/register.js";
 import { getClient, _resetForTests, TTL_SEC } from "../../../../src/auth/oauth-proxy/state-store.js";
@@ -21,8 +21,18 @@ function mockRes() {
 }
 
 describe("oauth-proxy: POST /oauth/register (R1)", () => {
+  let savedEnv: NodeJS.ProcessEnv;
+
   beforeEach(() => {
+    savedEnv = { ...process.env };
+    // R6.d/E3: Set allowlist so existing tests that test 201 paths continue to pass.
+    // The allowlist includes "http://localhost/cb" which is used in all successful tests.
+    process.env.OAUTH_PROXY_REDIRECT_URI_ALLOWLIST = "http://localhost/cb";
     _resetForTests();
+  });
+
+  afterEach(() => {
+    process.env = savedEnv;
   });
 
   it("201 + client_id + client_id_issued_at + token_endpoint_auth_method=none, no client_secret", () => {

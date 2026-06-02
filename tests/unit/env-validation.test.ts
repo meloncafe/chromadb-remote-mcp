@@ -56,6 +56,8 @@ function runValidation(envOverrides: Record<string, string | undefined>): {
     "GOOGLE_OAUTH_CLIENT_ID",
     "GOOGLE_OAUTH_CLIENT_SECRET",
     "NODE_ENV",
+    "CHROMA_REST_PROXY_ENABLED",
+    "OAUTH_PROXY_BASE_URL",
   ];
   for (const k of authKeys) {
     delete process.env[k];
@@ -92,6 +94,51 @@ function runValidation(envOverrides: Record<string, string | undefined>): {
 
   return { threw, thrownMessage, consoleErrors, consoleWarnings };
 }
+
+describe("validateEnvironmentVariables — Phase 1 (E1: proxy-requires-auth boot check)", () => {
+  it('proxy requires auth: CHROMA_REST_PROXY_ENABLED=true + no auth + ALLOW_INSECURE_NO_AUTH=true → errors include "CHROMA_REST_PROXY_ENABLED requires auth"', () => {
+    // E1 AC
+    const result = runValidation({
+      CHROMA_REST_PROXY_ENABLED: "true",
+      ALLOW_INSECURE_NO_AUTH: "true",
+    });
+    // Must throw (errors[] is non-empty)
+    expect(result.threw).toBe(true);
+    const allErrors = result.consoleErrors.join("\n");
+    expect(allErrors).toMatch(/CHROMA_REST_PROXY_ENABLED requires auth/i);
+  });
+
+  it('proxy enabled with MCP_AUTH_TOKEN → no proxy-auth error', () => {
+    // E1 AC — valid configuration: proxy + auth configured
+    const result = runValidation({
+      CHROMA_REST_PROXY_ENABLED: "true",
+      MCP_AUTH_TOKEN: "my-token",
+    });
+    expect(result.threw).toBe(false);
+    const allErrors = result.consoleErrors.join("\n");
+    expect(allErrors).not.toMatch(/CHROMA_REST_PROXY_ENABLED requires auth/i);
+  });
+
+  it('proxy enabled with OIDC_ISSUERS + OIDC_AUDIENCE → no proxy-auth error', () => {
+    const result = runValidation({
+      CHROMA_REST_PROXY_ENABLED: "true",
+      OIDC_ISSUERS: "https://accounts.google.com",
+      OIDC_AUDIENCE: "my-app",
+    });
+    expect(result.threw).toBe(false);
+    const allErrors = result.consoleErrors.join("\n");
+    expect(allErrors).not.toMatch(/CHROMA_REST_PROXY_ENABLED requires auth/i);
+  });
+
+  it('proxy disabled (unset) + no auth + ALLOW_INSECURE_NO_AUTH → no proxy-auth error (only base auth warning)', () => {
+    // Proxy OFF — E1 check should not fire
+    const result = runValidation({
+      ALLOW_INSECURE_NO_AUTH: "true",
+    });
+    const allErrors = result.consoleErrors.join("\n");
+    expect(allErrors).not.toMatch(/CHROMA_REST_PROXY_ENABLED requires auth/i);
+  });
+});
 
 describe("validateEnvironmentVariables — Phase 0 (R1 + R2)", () => {
   // Set NODE_ENV=test to prevent auto-call at module load, but we
@@ -196,11 +243,13 @@ describe("validateEnvironmentVariables — Phase 0 (R1 + R2)", () => {
 
     it('OIDC_ISSUERS set + OAUTH_PROXY_ENABLED=true + GOOGLE_OAUTH_CLIENT_ID set → no OIDC_AUDIENCE error', () => {
       // OAuth proxy mode: GOOGLE_OAUTH_CLIENT_ID fills audience
+      // R6.c: OAUTH_PROXY_BASE_URL is also required when OAUTH_PROXY_ENABLED=true
       const result = runValidation({
         OIDC_ISSUERS: "https://accounts.google.com",
         OAUTH_PROXY_ENABLED: "true",
         GOOGLE_OAUTH_CLIENT_ID: "client-id",
         GOOGLE_OAUTH_CLIENT_SECRET: "client-secret",
+        OAUTH_PROXY_BASE_URL: "https://mcp.example.com",
       });
       expect(result.threw).toBe(false);
       const allErrors = result.consoleErrors.join("\n");
@@ -216,5 +265,47 @@ describe("validateEnvironmentVariables — Phase 0 (R1 + R2)", () => {
       const allErrors = result.consoleErrors.join("\n");
       expect(allErrors).not.toContain("OIDC_AUDIENCE is required");
     });
+  });
+});
+
+describe("validateEnvironmentVariables — Phase 2 (R6.c: OAUTH_PROXY_BASE_URL required)", () => {
+  it('R6.c: OAUTH_PROXY_ENABLED=true + OAUTH_PROXY_BASE_URL missing → errors[] contains "OAUTH_PROXY_BASE_URL is required"', () => {
+    // R6.c AC#c1 — include OIDC_ISSUERS + credentials so only OAUTH_PROXY_BASE_URL is the missing piece
+    const result = runValidation({
+      OAUTH_PROXY_ENABLED: "true",
+      OIDC_ISSUERS: "https://accounts.google.com",
+      GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
+      GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
+      // OAUTH_PROXY_BASE_URL intentionally omitted
+    });
+    expect(result.threw).toBe(true);
+    const allErrors = result.consoleErrors.join("\n");
+    expect(allErrors).toContain("OAUTH_PROXY_BASE_URL is required");
+  });
+
+  it('R6.c: OAUTH_PROXY_ENABLED=true + OAUTH_PROXY_BASE_URL set + all required → no OAUTH_PROXY_BASE_URL error', () => {
+    // OAuth proxy mode requires: GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET + OAUTH_PROXY_BASE_URL
+    // For auth gate: GOOGLE_OAUTH_CLIENT_ID fills the audience when OIDC_ISSUERS is set with OAUTH_PROXY_ENABLED.
+    const result = runValidation({
+      OAUTH_PROXY_ENABLED: "true",
+      OIDC_ISSUERS: "https://accounts.google.com",
+      GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
+      GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
+      OAUTH_PROXY_BASE_URL: "https://mcp.example.com",
+    });
+    expect(result.threw).toBe(false);
+    const allErrors = result.consoleErrors.join("\n");
+    expect(allErrors).not.toContain("OAUTH_PROXY_BASE_URL is required");
+  });
+
+  it('R6.c: OAUTH_PROXY_ENABLED not set → no OAUTH_PROXY_BASE_URL error even if missing', () => {
+    // When OAuth proxy is disabled, OAUTH_PROXY_BASE_URL is not required
+    const result = runValidation({
+      MCP_AUTH_TOKEN: "my-token",
+      // OAUTH_PROXY_ENABLED not set, OAUTH_PROXY_BASE_URL not set
+    });
+    expect(result.threw).toBe(false);
+    const allErrors = result.consoleErrors.join("\n");
+    expect(allErrors).not.toContain("OAUTH_PROXY_BASE_URL is required");
   });
 });

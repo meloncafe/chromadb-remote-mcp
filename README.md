@@ -705,7 +705,9 @@ https://your-server.com/docs  # send Authorization: Bearer YOUR_TOKEN header
 curl http://localhost:8000/api/v2/heartbeat
 
 # Start ChromaDB with Docker
-docker run -d -p 8000:8000 chromadb/chroma:latest
+# WARNING: ChromaDB has no built-in authentication — do not publish on routable interface.
+# Bind to loopback only (127.0.0.1:8000:8000). Use MCP server as the authenticated gateway.
+docker run -d -p 127.0.0.1:8000:8000 chromadb/chroma:1.5.9
 
 # Check MCP server logs
 docker compose logs mcp-server
@@ -956,7 +958,7 @@ docker-compose up
 chromadb-remote-mcp/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/       # GitHub issue templates
-│   └── workflows/            # GitHub Actions (publish-release, security-scan, chromadb-version-check)
+│   └── workflows/            # GitHub Actions (publish-release, security-scan, chromadb-version-check.yml)
 ├── scripts/
 │   ├── build.sh             # Docker build and push script (multi-platform)
 │   ├── test.sh              # Integration test runner
@@ -977,6 +979,47 @@ chromadb-remote-mcp/
 ├── CHANGELOG.md             # Version history
 └── LICENSE                  # MIT license
 ```
+
+---
+
+## v2.2.3 Release Notes — CVE-2026-45829 Security Hardening
+
+> **⚠️ Breaking changes** — operators upgrading from v2.2.2 or earlier must read this section.
+
+### ChromaDB image version pinned (R4)
+
+All `docker-compose*.yml` files now pin `chromadb/chroma` to version `1.5.9@sha256:...`.
+Versions `1.0.0–1.5.8` are vulnerable to **CVE-2026-45829 (ChromaToast, CVSS 10.0)** —
+a pre-auth RCE via malicious embedding-function configuration. Do not downgrade the pin.
+
+A CI workflow (`.github/workflows/chromadb-version-check.yml`) fails the build if any
+docker-compose file references a version in the vulnerable range.
+
+### Dev fail-open removed (R1, breaking)
+
+Previously, starting the server without `MCP_AUTH_TOKEN` or `OIDC_ISSUERS`/`OIDC_PRESET`
+would succeed silently in non-production environments. This behaviour is **removed**.
+
+The server now **refuses to start** unless at least one auth method is configured or
+`ALLOW_INSECURE_NO_AUTH=true` is explicitly set.
+
+**Migration:**
+- Production: set `MCP_AUTH_TOKEN` or configure OIDC.
+- Local dev: add `ALLOW_INSECURE_NO_AUTH=true` to your `.env`.
+
+### ChromaDB REST catch-all proxy is now OFF by default (R3, breaking)
+
+The pass-through REST proxy (previously always mounted) is now **disabled unless**
+`CHROMA_REST_PROXY_ENABLED=true` is set. When disabled, all `/api/*` requests return 404.
+
+When enabled, the proxy enforces:
+- DNS-rebind protection (`validateOriginHeader`) — `Origin: evil.example` → 403
+- Authentication (always required; `ALLOW_INSECURE_NO_AUTH` does **not** bypass the proxy)
+- Path filter: collection create/modify/delete and embedding-function endpoints are blocked (403)
+- Body sanitize: `configuration.embedding_function` in POST/PUT/PATCH body → 400
+
+**Migration:** If you relied on direct `/api/v2/*` REST passthrough, set
+`CHROMA_REST_PROXY_ENABLED=true` and ensure authentication is configured.
 
 ---
 

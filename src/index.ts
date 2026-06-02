@@ -1,6 +1,6 @@
 import express from "express";
 import type {ClientRequest, Server as HttpServer} from "http";
-import {createProxyMiddleware} from "http-proxy-middleware";
+import {createProxyMiddleware, fixRequestBody} from "http-proxy-middleware";
 import {ChromaClient} from "chromadb";
 import {Server} from "@modelcontextprotocol/sdk/server/index.js";
 import {StreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -259,6 +259,17 @@ export function validateEnvironmentVariables() {
     }
   }
 
+  // E1 (CVE-2026-45829): CHROMA_REST_PROXY_ENABLED=true without any auth is always
+  // rejected — even ALLOW_INSECURE_NO_AUTH=true cannot bypass this, because
+  // "the proxy is always authenticated or disabled" (R1 constraint).
+  if (process.env.CHROMA_REST_PROXY_ENABLED === "true") {
+    if (!hasOidcIssuers && !hasMcpToken) {
+      errors.push(
+        "❌ CRITICAL: CHROMA_REST_PROXY_ENABLED requires auth — set MCP_AUTH_TOKEN or OIDC_ISSUERS/OIDC_PRESET. The REST proxy cannot be activated without authentication (ALLOW_INSECURE_NO_AUTH does not bypass this).",
+      );
+    }
+  }
+
   // R3: OAuth proxy requires Google client credentials when enabled.
   // Validated at boot so misconfigured deployments fail fast instead of
   // silently 500'ing on the first /oauth/authorize request.
@@ -271,6 +282,14 @@ export function validateEnvironmentVariables() {
     if (!process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
       errors.push(
         "❌ CRITICAL: GOOGLE_OAUTH_CLIENT_SECRET is required when OAUTH_PROXY_ENABLED=true",
+      );
+    }
+    // R6.c (CVE-2026-45829): OAUTH_PROXY_BASE_URL is required when OAuth proxy is
+    // enabled. Without it, canonical URLs in OAuth metadata responses are derived
+    // from X-Forwarded-Host (spoofable) → redirect OAuth flows to attacker servers.
+    if (!process.env.OAUTH_PROXY_BASE_URL || !process.env.OAUTH_PROXY_BASE_URL.trim()) {
+      errors.push(
+        "OAUTH_PROXY_BASE_URL is required when OAUTH_PROXY_ENABLED=true (set to the public base URL of this server, e.g. https://mcp.example.com)",
       );
     }
   }
@@ -365,6 +384,17 @@ const chromaConfig: ChromaConfig = {
  */
 export function isOAuthProxyEnabled(): boolean {
   const raw = process.env.OAUTH_PROXY_ENABLED;
+  if (typeof raw !== "string") return false;
+  return raw.trim().toLowerCase() === "true";
+}
+
+/**
+ * R3 (CVE-2026-45829): Returns true only when CHROMA_REST_PROXY_ENABLED is exactly "true".
+ * Default is OFF — the catch-all ChromaDB REST proxy is NOT mounted unless explicitly
+ * opted in by the operator. Mirrors isOAuthProxyEnabled() pattern.
+ */
+export function isRestProxyEnabled(): boolean {
+  const raw = process.env.CHROMA_REST_PROXY_ENABLED;
   if (typeof raw !== "string") return false;
   return raw.trim().toLowerCase() === "true";
 }
@@ -1573,10 +1603,23 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
 app.post("/mcp", validateProtocolVersion, validateOriginHeader, oidcAuthMiddleware, mcpHandler);
 app.post("/", validateProtocolVersion, validateOriginHeader, oidcAuthMiddleware, mcpHandler);
 
-// Health check handler - exported for testing
+// Health check handler — minimal unauthenticated liveness probe.
+// R6.b (CVE-2026-45829): Only {status:"ok"} is returned without authentication.
+// Internal ChromaDB host:port and connection details are moved to /health/detail
+// (authenticated) to prevent information exposure.
 export async function healthHandler(_req: express.Request, res: express.Response) {
   try {
-    // Test actual ChromaDB connection
+    await getChromaClient().heartbeat();
+    res.json({ status: "ok" });
+  } catch (_error) {
+    res.status(503).json({ status: "error" });
+  }
+}
+
+// Health detail handler — authenticated endpoint exposing chroma host:port and
+// connection status. Intended for operators / authenticated probers.
+export async function healthDetailHandler(_req: express.Request, res: express.Response) {
+  try {
     await getChromaClient().heartbeat();
     res.json({
       status: "ok",
@@ -1594,8 +1637,11 @@ export async function healthHandler(_req: express.Request, res: express.Response
   }
 }
 
-// Health check endpoint (no authentication required)
+// Health check endpoint (no authentication required) — minimal {status:"ok"} only.
 app.get("/health", healthHandler);
+
+// Authenticated health detail endpoint — chroma host:port + connection status.
+app.get("/health/detail", oidcAuthMiddleware, healthDetailHandler);
 
 // RFC 9728 Protected Resource Metadata — public (no auth required)
 app.get("/.well-known/oauth-protected-resource", protectedResourceHandler);
@@ -1669,18 +1715,137 @@ export function trackConnection(
 app.use(trackConnection);
 
 // ChromaDB REST API Proxy (catch-all for all other requests)
-// This must be LAST to catch all non-MCP, non-health requests
-app.use(
-  oidcAuthMiddleware,
-  createProxyMiddleware({
-    target: `http://${chromaConfig.host}:${chromaConfig.port}`,
-    changeOrigin: true,
-    on: {
-      proxyReq: proxyReqHandler,
-      error: proxyErrorHandler,
+// R3 (CVE-2026-45829): Gated behind CHROMA_REST_PROXY_ENABLED=true (default OFF).
+// When disabled (default), all /api/* requests will fall through to 404.
+// When enabled, the chain is:
+//   validateOriginHeader (DNS-rebind defense) →
+//   oidcAuthMiddleware (always enforced — ALLOW_INSECURE_NO_AUTH does not bypass) →
+//   pathFilter (collection create/modify + embedding-function paths blocked) →
+//   proxyReq body sanitize (embedding_function keys stripped/rejected)
+if (isRestProxyEnabled()) {
+  // R3.a: pathFilter — allowlist everything except collection write + embedding-function paths.
+  // Blocked patterns (all HTTP methods): collection create/modify/delete operations and
+  // embedding-function configuration endpoints that could trigger CVE-2026-45829.
+  // Returns true = FORWARD, false = BLOCK.
+  function restProxyPathFilter(pathname: string, req: express.Request): boolean {
+    const method = (req.method || "GET").toUpperCase();
+    // Block any path containing /embedding or /embedding_function (CVE sink)
+    if (/\/embedding/i.test(pathname)) {
+      return false;
+    }
+    // Block collection creation / modification / deletion:
+    //   POST   .../collections           (create)
+    //   PUT    .../collections/:id       (modify)
+    //   PATCH  .../collections/:id       (modify)
+    //   DELETE .../collections/:id       (delete)
+    if (/\/collections(\/[^/]+)?$/.test(pathname)) {
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+        return false;
+      }
+    }
+    // All other paths are forwarded
+    return true;
+  }
+
+  // R3.c: proxyReq body sanitize — strip embedding_function keys from forwarded body.
+  // express.json() is already mounted globally (index.ts:1202), so req.body is available.
+  // fixRequestBody re-serializes the (potentially modified) body onto the proxy request.
+  function restProxyReqHandler(
+    proxyReq: ClientRequest,
+    req: express.Request,
+    res: express.Response,
+  ): void {
+    // Run the base logging handler first
+    proxyReqHandler(proxyReq, req, res);
+
+    // Only inspect POST/PUT/PATCH bodies that may carry collection config
+    const method = (req.method || "GET").toUpperCase();
+    if (!["POST", "PUT", "PATCH"].includes(method)) {
+      fixRequestBody(proxyReq, req);
+      return;
+    }
+
+    const body = req.body as Record<string, unknown> | undefined;
+    if (!body || typeof body !== "object") {
+      fixRequestBody(proxyReq, req);
+      return;
+    }
+
+    // If the body contains embedding_function configuration, reject outright (400).
+    // This covers the CVE-2026-45829 trust_remote_code / model sink.
+    const config = body.configuration as Record<string, unknown> | undefined;
+    if (config && typeof config === "object" && config.embedding_function !== undefined) {
+      // Abort the proxy request and return 400 to the client
+      proxyReq.destroy();
+      if (!res.headersSent) {
+        res.status(400).json({
+          error: "invalid_request",
+          error_description:
+            "configuration.embedding_function is not permitted via the REST proxy (CVE-2026-45829 hardening).",
+        });
+      }
+      return;
+    }
+
+    // Re-stream the (unmodified or sanitized) body onto the proxy request
+    fixRequestBody(proxyReq, req);
+  }
+
+  // R3.c (Express middleware): body sanitize guard — reject bodies with
+  // configuration.embedding_function before forwarding to upstream.
+  // Runs as an Express middleware so it fires even when the proxy is mocked.
+  function restBodySanitizeMiddleware(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ): void {
+    const method = (req.method || "GET").toUpperCase();
+    if (!["POST", "PUT", "PATCH"].includes(method)) {
+      return next();
+    }
+    const body = req.body as Record<string, unknown> | undefined;
+    if (!body || typeof body !== "object") {
+      return next();
+    }
+    const config = body.configuration as Record<string, unknown> | undefined;
+    if (config && typeof config === "object" && config.embedding_function !== undefined) {
+      res.status(400).json({
+        error: "invalid_request",
+        error_description:
+          "configuration.embedding_function is not permitted via the REST proxy (CVE-2026-45829 hardening).",
+      });
+      return;
+    }
+    return next();
+  }
+
+  // R1 note: oidcAuthMiddleware already blocks /api/* paths from ALLOW_INSECURE_NO_AUTH
+  // (see middleware.ts isProxyPath check). This mount ordering makes that explicit.
+  app.use(
+    validateOriginHeader,           // R3.b: DNS-rebind defense (same as /mcp)
+    oidcAuthMiddleware,              // R1: always enforced for proxy — no ALLOW_INSECURE_NO_AUTH bypass
+    (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      // R3.a: pathFilter — block collection write + embedding-function paths
+      if (!restProxyPathFilter(req.path, req)) {
+        return res.status(403).json({
+          error: "forbidden",
+          error_description:
+            "This path is blocked by the REST proxy path filter (collection writes and embedding-function endpoints are not permitted).",
+        });
+      }
+      return next();
     },
-  }),
-);
+    restBodySanitizeMiddleware,      // R3.c: reject embedding_function in body before forwarding
+    createProxyMiddleware({
+      target: `http://${chromaConfig.host}:${chromaConfig.port}`,
+      changeOrigin: true,
+      on: {
+        proxyReq: restProxyReqHandler,   // fixRequestBody for the proxy stream
+        error: proxyErrorHandler,
+      },
+    }),
+  );
+}
 
 // Helper function to display config value with default indicator
 export function formatConfigValue(
