@@ -1717,12 +1717,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^25.9.1":
-  version: 25.9.1
-  resolution: "@types/node@npm:25.9.1"
+"@types/node@npm:^25.9.2":
+  version: 25.9.2
+  resolution: "@types/node@npm:25.9.2"
   dependencies:
     undici-types: "npm:>=7.24.0 <7.24.7"
-  checksum: 10c0/9a04682842bebbcf21a1779dfeab9aa733d7bd7bbc0a0edb641ab3a9a3d43eac543225acf669c334f458f1956443ebc072bc3c72840c543b8b356cab5c82d456
+  checksum: 10c0/f14c0d56361febb985eccc45cf0834ee6e2f07c4389a636f3e1a55ebde320077a80bface18c9afd3092f5fa295925502c1a9d55f805efa813f634aa9c941cbac
   languageName: node
   linkType: hard
 
@@ -2524,7 +2524,7 @@ __metadata:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
-    "@types/node": "npm:^25.9.1"
+    "@types/node": "npm:^25.9.2"
     "@typescript-eslint/eslint-plugin": "npm:^8.60.1"
     "@typescript-eslint/parser": "npm:^8.60.1"
     chromadb: "npm:^3.4.3"
@@ -2532,7 +2532,7 @@ __metadata:
     eslint: "npm:^10.4.1"
     express: "npm:^5.2.1"
     express-rate-limit: "npm:^8.5.2"
-    http-proxy-middleware: "npm:^4.0.0"
+    http-proxy-middleware: "npm:^4.1.0"
     jest: "npm:^30.4.2"
     jest-junit: "npm:^17.0.0"
     jose: "npm:^6.2.3"
@@ -3762,16 +3762,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"http-proxy-middleware@npm:^4.0.0":
-  version: 4.0.0
-  resolution: "http-proxy-middleware@npm:4.0.0"
+"http-proxy-middleware@npm:^4.1.0":
+  version: 4.1.0
+  resolution: "http-proxy-middleware@npm:4.1.0"
   dependencies:
     debug: "npm:^4.4.3"
-    httpxy: "npm:^0.5.1"
+    httpxy: "npm:^0.5.3"
     is-glob: "npm:^4.0.3"
     is-plain-obj: "npm:^4.1.0"
     micromatch: "npm:^4.0.8"
-  checksum: 10c0/956cfec006b3619433e5c5ce24e9379bbe2e2ae885705df82c261530392c94c101205ef891845fe7d39b9d646a463c302b3b6d90125dc6e8dc42fbd7c6211c69
+  checksum: 10c0/e8957f2ddb6ce566b9f0e3cd0afbbdb0767a457a2131d84c4834ab66afa2f4abbabc68557e28e603b807b3182c935569b192d6b8b417f8c58a7c150ef72c6bf5
   languageName: node
   linkType: hard
 
@@ -3785,10 +3785,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"httpxy@npm:^0.5.1":
-  version: 0.5.1
-  resolution: "httpxy@npm:0.5.1"
-  checksum: 10c0/46c5297012c845a444dc35879716b6145611187e67e13a97f547d93a5f7e401ee00505e722c1fcf7cc42a2a273575491626a13d4a3b1ea468cae0fd3930c6df4
+"httpxy@npm:^0.5.3":
+  version: 0.5.3
+  resolution: "httpxy@npm:0.5.3"
+  checksum: 10c0/8120753638d1a50b13396d7c55536db076a04609dfb7eea19f5b461f9541acf4646fa6bfb8991f14bad62e0037b524481c5d625892b4ff94a6ab744149ed9387
   languageName: node
   linkType: hard
 
