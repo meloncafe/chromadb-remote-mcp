@@ -3,7 +3,7 @@
   "version": "3.0.0",
   "description": "ChromaDB Remote MCP Server with Streamable HTTP Transport",
   "type": "module",
-  "packageManager": "yarn@4.14.1",
+  "packageManager": "yarn@4.17.0",
   "main": "build/index.js",
   "mcpName": "io.github.meloncafe/chromadb-remote-mcp",
   "private": true,
@@ -46,7 +46,7 @@
   "dependencies": {
     "@chroma-core/default-embed": "^0.1.9",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "chromadb": "^3.4.3",
+    "chromadb": "^3.5.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
@@ -60,7 +60,7 @@
     "@jest/globals": "^30.4.1",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.1.0",
     "@typescript-eslint/eslint-plugin": "^8.62.1",
     "@typescript-eslint/parser": "^8.62.1",
     "eslint": "^10.6.0",
@@ -72,8 +72,8 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": ">=24.15.0",
-    "yarn": ">=4.14.1"
+    "node": ">=24.18.0",
+    "yarn": ">=4.17.0"
   },
   "dependenciesMeta": {
     "esbuild": {
