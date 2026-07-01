@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 9
+  version: 10
   cacheKey: 10c0
 
 "@babel/code-frame@npm:^7.0.0, @babel/code-frame@npm:^7.27.1, @babel/code-frame@npm:^7.29.7":
@@ -1635,12 +1635,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:*, @types/node@npm:>=13.7.0, @types/node@npm:^26.0.1":
+"@types/node@npm:*, @types/node@npm:>=13.7.0":
   version: 26.0.1
   resolution: "@types/node@npm:26.0.1"
   dependencies:
     undici-types: "npm:~8.3.0"
   checksum: 10c0/31d204333c70124da6bcac7d1f27d8980149fe3f95a8419bfcd19c3e5823705c0e370d71ac34399352e1263b2d5fc41c87af964ec81e5a05a32224d65d8d224e
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:^26.1.0":
+  version: 26.1.0
+  resolution: "@types/node@npm:26.1.0"
+  dependencies:
+    undici-types: "npm:~8.3.0"
+  checksum: 10c0/61c22ad1ef215e24138cb8b7368fb68bab9de4c123b3f23d411749b015ba1b7d22f878ad54add26a0b69068d7e07c04af665069d8571b6c6c3b9b2fb73b7bd91
   languageName: node
   linkType: hard
 
@@ -2440,10 +2449,10 @@ __metadata:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
-    "@types/node": "npm:^26.0.1"
+    "@types/node": "npm:^26.1.0"
     "@typescript-eslint/eslint-plugin": "npm:^8.62.1"
     "@typescript-eslint/parser": "npm:^8.62.1"
-    chromadb: "npm:^3.4.3"
+    chromadb: "npm:^3.5.0"
     dotenv: "npm:^17.4.2"
     eslint: "npm:^10.6.0"
     express: "npm:^5.2.1"
@@ -2470,50 +2479,50 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"chromadb-js-bindings-darwin-arm64@npm:^1.3.3":
+"chromadb-js-bindings-darwin-arm64@npm:^1.3.4":
   version: 1.3.4
   resolution: "chromadb-js-bindings-darwin-arm64@npm:1.3.4"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-darwin-x64@npm:^1.3.3":
+"chromadb-js-bindings-darwin-x64@npm:^1.3.4":
   version: 1.3.4
   resolution: "chromadb-js-bindings-darwin-x64@npm:1.3.4"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-linux-arm64-gnu@npm:^1.3.3":
+"chromadb-js-bindings-linux-arm64-gnu@npm:^1.3.4":
   version: 1.3.4
   resolution: "chromadb-js-bindings-linux-arm64-gnu@npm:1.3.4"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-linux-x64-gnu@npm:^1.3.3":
+"chromadb-js-bindings-linux-x64-gnu@npm:^1.3.4":
   version: 1.3.4
   resolution: "chromadb-js-bindings-linux-x64-gnu@npm:1.3.4"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"chromadb-js-bindings-win32-x64-msvc@npm:^1.3.3":
+"chromadb-js-bindings-win32-x64-msvc@npm:^1.3.4":
   version: 1.3.4
   resolution: "chromadb-js-bindings-win32-x64-msvc@npm:1.3.4"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"chromadb@npm:^3.4.3":
-  version: 3.4.3
-  resolution: "chromadb@npm:3.4.3"
+"chromadb@npm:^3.5.0":
+  version: 3.5.0
+  resolution: "chromadb@npm:3.5.0"
   dependencies:
-    chromadb-js-bindings-darwin-arm64: "npm:^1.3.3"
-    chromadb-js-bindings-darwin-x64: "npm:^1.3.3"
-    chromadb-js-bindings-linux-arm64-gnu: "npm:^1.3.3"
-    chromadb-js-bindings-linux-x64-gnu: "npm:^1.3.3"
-    chromadb-js-bindings-win32-x64-msvc: "npm:^1.3.3"
+    chromadb-js-bindings-darwin-arm64: "npm:^1.3.4"
+    chromadb-js-bindings-darwin-x64: "npm:^1.3.4"
+    chromadb-js-bindings-linux-arm64-gnu: "npm:^1.3.4"
+    chromadb-js-bindings-linux-x64-gnu: "npm:^1.3.4"
+    chromadb-js-bindings-win32-x64-msvc: "npm:^1.3.4"
     semver: "npm:^7.7.1"
   dependenciesMeta:
     chromadb-js-bindings-darwin-arm64:
@@ -2528,7 +2537,7 @@ __metadata:
       optional: true
   bin:
     chroma: dist/cli.mjs
-  checksum: 10c0/69186734a93f03a53f4d333a7a3331b9a1b71d78ffda017522b709590587143da1f6e7de6d88617786164c3cf0bb228c2e066bee19035f1807bd9a1ed15d44b8
+  checksum: 10c0/d3867079cc0998c7db7d3e523e73bb647eaee0862fe7c369dd95d7b92122fb3b30eace0b40fb6c35112db7ceece08f849dade2e2ce24fc31386c135e91ff6e6b
   languageName: node
   linkType: hard
 
