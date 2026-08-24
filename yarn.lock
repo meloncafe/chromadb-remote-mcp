@@ -2463,13 +2463,13 @@ __metadata:
     "@typescript-eslint/parser": "npm:^8.67.0"
     chromadb: "npm:^3.5.0"
     dotenv: "npm:^17.4.2"
-    eslint: "npm:^10.8.1"
+    eslint: "npm:^10.9.0"
     express: "npm:^5.2.1"
     express-rate-limit: "npm:^8.6.2"
     http-proxy-middleware: "npm:^4.2.0"
     jest: "npm:^30.4.2"
     jest-junit: "npm:^17.0.0"
-    jose: "npm:^6.2.9"
+    jose: "npm:^6.2.10"
     prettier: "npm:^3.9.6"
     ts-jest: "npm:^29.4.12"
     tsx: "npm:^4.23.12"
@@ -3019,9 +3019,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint@npm:^10.8.1":
-  version: 10.8.1
-  resolution: "eslint@npm:10.8.1"
+"eslint@npm:^10.9.0":
+  version: 10.9.0
+  resolution: "eslint@npm:10.9.0"
   dependencies:
     "@eslint-community/eslint-utils": "npm:^4.8.0"
     "@eslint-community/regexpp": "npm:^4.12.2"
@@ -3060,7 +3060,7 @@ __metadata:
       optional: true
   bin:
     eslint: bin/eslint.js
-  checksum: 10c0/0c4720a43ef2052829db18e37aa79adb5f0a62137bdf4a4f8e9507bbbbf888ba0669fc03e4b7139d8f27b59b051bbbcd0a3988b068c30fa934a766d60a81f599
+  checksum: 10c0/bc6c9f4a5c0b97e37ab1aa1753ae30ad5b0cf43a25ca3dcfff937f2b47243654c3ca34e37f71006474a3c1b95d6d4e046149facc6d66af4af6e993a619c23509
   languageName: node
   linkType: hard
 
@@ -4354,10 +4354,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"jose@npm:^6.2.9":
-  version: 6.2.9
-  resolution: "jose@npm:6.2.9"
-  checksum: 10c0/fc6d79b11fdd5cc1393bccd644533b3e2445fd8eb2468066eb23c01ed7f6b41deca710e8aabe9379a382cca7920740900c7f610bdf0be4ff5e7ee44412730d4c
+"jose@npm:^6.2.10":
+  version: 6.2.10
+  resolution: "jose@npm:6.2.10"
+  checksum: 10c0/799fd8d3d92fe748ebe1f57dbd3dfd917d2e61d9fb39912c72cc674ae61d69414b7cc0ce773df8a0160e849926fc31853aec9caab88c481563d5a8ab6558e107
   languageName: node
   linkType: hard
 
