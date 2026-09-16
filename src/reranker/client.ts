@@ -58,7 +58,7 @@ export async function rerank(
     model,
     query,
     documents: candidates.map((c) => c.document ?? ""),
-    top_n: topK,
+    top_k: topK,
   };
 
   const controller = new AbortController();
