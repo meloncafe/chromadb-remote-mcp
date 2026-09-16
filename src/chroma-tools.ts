@@ -1337,11 +1337,15 @@ export async function handleChromaTool(
         }
 
         type QueryWorkingResults = Parameters<typeof applyConfidenceFilter>[0];
+        // The SDK's `Include` literal union is not exported, so derive it from the
+        // query signature rather than restating it here.
+        type QueryInclude = NonNullable<Parameters<typeof collection.query>[0]["include"]>;
+        const DOCUMENTS_INCLUDE: QueryInclude[number] = "documents";
 
         const rerankEnabled = args.rerank === true;
         const rerankTopN = typeof args.rerank_top_n === "number" ? args.rerank_top_n : 20;
         const rerankTopK = typeof args.rerank_top_k === "number" ? args.rerank_top_k : 5;
-        const requestedInclude: string[] = args.include || [
+        const requestedInclude: QueryInclude = (args.include as QueryInclude | undefined) ?? [
           "documents",
           "metadatas",
           "distances",
@@ -1352,9 +1356,9 @@ export async function handleChromaTool(
         // this the reranker receives only empty strings and providers such as
         // Voyage reject the request with HTTP 400. Stripped back out below so the
         // response still honours `include`.
-        const effectiveInclude =
-          rerankEnabled && !requestedInclude.includes("documents")
-            ? [...requestedInclude, "documents"]
+        const effectiveInclude: QueryInclude =
+          rerankEnabled && !requestedInclude.includes(DOCUMENTS_INCLUDE)
+            ? [...requestedInclude, DOCUMENTS_INCLUDE]
             : requestedInclude;
 
         // The reranker can only reorder what ChromaDB returned. Fetching n_results
@@ -1401,7 +1405,7 @@ export async function handleChromaTool(
           }
 
           const ranking = await rerank(queryString, candidates, rerankTopK);
-          const keepDocuments = requestedInclude.includes("documents");
+          const keepDocuments = requestedInclude.includes(DOCUMENTS_INCLUDE);
 
           workingResults = {
             ids: [ranking.indices.map((i) => candidates[i].id)],
