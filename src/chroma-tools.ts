@@ -561,7 +561,11 @@ export function createChromaTools(_chromaClient: ChromaClient): ToolDefinition[]
             minimum: 0,
             maximum: 1,
             description:
-              "Confidence threshold (0-1). Items below this similarity score are filtered. Defaults to CONFIDENCE_THRESHOLD env or 0 (disabled).",
+              "Confidence threshold (0-1). Items whose similarity score is below this are filtered. " +
+              "Score is 1/(1+distance), so the achievable range depends on the collection's embedding " +
+              "model and distance space and is usually far narrower than 0-1 — calibrate against real " +
+              "queries before setting it. Ignored when rerank actually reordered the results. " +
+              "Defaults to CONFIDENCE_THRESHOLD env or 0 (disabled).",
           },
           rerank: {
             type: "boolean",
@@ -1343,6 +1347,7 @@ export async function handleChromaTool(
         const DOCUMENTS_INCLUDE: QueryInclude[number] = "documents";
 
         const rerankEnabled = args.rerank === true;
+        let rerankApplied = false;
         const rerankTopN = typeof args.rerank_top_n === "number" ? args.rerank_top_n : 20;
         const rerankTopK = typeof args.rerank_top_k === "number" ? args.rerank_top_k : 5;
         const requestedInclude: QueryInclude = (args.include as QueryInclude | undefined) ?? [
@@ -1405,6 +1410,7 @@ export async function handleChromaTool(
           }
 
           const ranking = await rerank(queryString, candidates, rerankTopK);
+          rerankApplied = ranking.reranked;
           const keepDocuments = requestedInclude.includes(DOCUMENTS_INCLUDE);
 
           workingResults = {
@@ -1423,7 +1429,21 @@ export async function handleChromaTool(
           };
         }
 
-        const minScore = resolveMinScore(args.min_score, process.env.CONFIDENCE_THRESHOLD);
+        const requestedMinScore = resolveMinScore(
+          args.min_score,
+          process.env.CONFIDENCE_THRESHOLD,
+        );
+
+        // `distances` still carries the original vector distances after a rerank,
+        // so gating on them judges the reranked ordering by the very scores the
+        // reranker was brought in to override — it can drop the item the reranker
+        // ranked first. The reranker already selected top-K, so skip the gate.
+        if (rerankApplied && requestedMinScore > 0) {
+          console.warn(
+            "min_score ignored — results were reranked, and the gate scores vector distances rather than reranker relevance.",
+          );
+        }
+        const minScore = rerankApplied ? 0 : requestedMinScore;
         const filtered = applyConfidenceFilter(workingResults, minScore);
         const responseBody: Record<string, unknown> = {
           ...filtered.results,
