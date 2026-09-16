@@ -1336,23 +1336,50 @@ export async function handleChromaTool(
           finalQueryEmbeddings = await providerQ.embed(args.query_texts, taskType);
         }
 
+        type QueryWorkingResults = Parameters<typeof applyConfidenceFilter>[0];
+
+        const rerankEnabled = args.rerank === true;
+        const rerankTopN = typeof args.rerank_top_n === "number" ? args.rerank_top_n : 20;
+        const rerankTopK = typeof args.rerank_top_k === "number" ? args.rerank_top_k : 5;
+        const requestedInclude: string[] = args.include || [
+          "documents",
+          "metadatas",
+          "distances",
+        ];
+
+        // Reranking scores (query, document) pairs, so the document text must be
+        // fetched even when the caller did not ask for it in the response. Without
+        // this the reranker receives only empty strings and providers such as
+        // Voyage reject the request with HTTP 400. Stripped back out below so the
+        // response still honours `include`.
+        const effectiveInclude =
+          rerankEnabled && !requestedInclude.includes("documents")
+            ? [...requestedInclude, "documents"]
+            : requestedInclude;
+
+        // The reranker can only reorder what ChromaDB returned. Fetching n_results
+        // (default 5) while handing the reranker a top-N of 20 silently reranked 5
+        // rows, so nothing below the vector top-5 could ever surface — which is the
+        // main reason to run the stage at all.
+        const nResults = args.n_results || 5;
+        const effectiveNResults = rerankEnabled
+          ? Math.max(nResults, rerankTopN)
+          : nResults;
+
         const results = await collection.query({
           queryTexts: hasQueryTexts && !finalQueryEmbeddings ? args.query_texts : undefined,
           queryEmbeddings: finalQueryEmbeddings,
           ...(Array.isArray(args.query_uris) && args.query_uris.length > 0 && { queryURIs: args.query_uris }),
           ...(Array.isArray(args.ids) && args.ids.length > 0 && { ids: args.ids }),
-          nResults: args.n_results || 5,
+          nResults: effectiveNResults,
           where: args.where,
           whereDocument: args.where_document,
-          include: args.include || ["documents", "metadatas", "distances"],
+          include: effectiveInclude,
         });
 
-        let workingResults = results as unknown as Parameters<typeof applyConfidenceFilter>[0];
+        let workingResults = results as unknown as QueryWorkingResults;
 
-        if (args.rerank === true) {
-          const topN = typeof args.rerank_top_n === "number" ? args.rerank_top_n : 20;
-          const topK = typeof args.rerank_top_k === "number" ? args.rerank_top_k : 5;
-
+        if (rerankEnabled) {
           const queryString = hasQueryTexts
             ? args.query_texts[0]
             : "";
@@ -1362,7 +1389,7 @@ export async function handleChromaTool(
           const metasGroup = workingResults.metadatas?.[0] ?? [];
           const distsGroup = workingResults.distances?.[0] ?? [];
 
-          const sliceN = Math.min(idsGroup.length, topN);
+          const sliceN = Math.min(idsGroup.length, rerankTopN);
           const candidates: RerankCandidate[] = [];
           for (let i = 0; i < sliceN; i++) {
             candidates.push({
@@ -1373,20 +1400,22 @@ export async function handleChromaTool(
             });
           }
 
-          const ranking = await rerank(queryString, candidates, topK);
+          const ranking = await rerank(queryString, candidates, rerankTopK);
+          const keepDocuments = requestedInclude.includes("documents");
 
           workingResults = {
             ids: [ranking.indices.map((i) => candidates[i].id)],
-            documents: workingResults.documents
-              ? [ranking.indices.map((i) => candidates[i].document)]
-              : undefined,
+            documents:
+              keepDocuments && workingResults.documents
+                ? [ranking.indices.map((i) => candidates[i].document)]
+                : undefined,
             metadatas: workingResults.metadatas
               ? [ranking.indices.map((i) => candidates[i].metadata)]
               : undefined,
             distances: workingResults.distances
               ? [ranking.indices.map((i) => candidates[i].distance)]
               : undefined,
-            include: workingResults.include,
+            include: requestedInclude as unknown as QueryWorkingResults["include"],
           };
         }
 
