@@ -63,7 +63,7 @@ describe("Phase 6: reranker client (R18-R21)", () => {
     const body = JSON.parse(capturedInit?.body || "{}");
     expect(body.model).toBe("bge-reranker-v2-m3");
     expect(body.query).toBe("query text");
-    expect(body.top_n).toBe(2);
+    expect(body.top_k).toBe(2);
     expect(body.documents).toEqual(["alpha", "beta", "gamma"]);
     expect(result.reranked).toBe(true);
     expect(result.indices).toEqual([2, 0]);
@@ -95,5 +95,42 @@ describe("Phase 6: reranker client (R18-R21)", () => {
     const result = await rerank("q", sampleCandidates, 2);
     expect(result.reranked).toBe(false);
     expect(result.indices).toEqual([0, 1]);
+  });
+
+  it("skips the call when no candidate carries document text", async () => {
+    process.env.RERANKER_API_BASE = "http://localhost:9000";
+    const fetchSpy = jest.fn(async () => new Response("{}", { status: 200 }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const blankCandidates = [
+      { id: "a", document: null, metadata: null, distance: 0.5 },
+      { id: "b", document: "   ", metadata: null, distance: 0.3 },
+    ];
+    const result = await rerank("q", blankCandidates, 2);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.reranked).toBe(false);
+    expect(result.indices).toEqual([0, 1]);
+    expect(
+      warnSpy.mock.calls.some((c) => String(c[0]).includes("no document text")),
+    ).toBe(true);
+  });
+
+  it("includes the provider error body in the HTTP failure warning", async () => {
+    process.env.RERANKER_API_BASE = "http://localhost:9000";
+    global.fetch = jest.fn(
+      async () => new Response('{"detail":"documents must be non-empty"}', { status: 400 }),
+    ) as unknown as typeof fetch;
+
+    const result = await rerank("q", sampleCandidates, 2);
+
+    expect(result.reranked).toBe(false);
+    expect(
+      warnSpy.mock.calls.some(
+        (c) =>
+          String(c[0]).includes("HTTP 400") &&
+          String(c[0]).includes("documents must be non-empty"),
+      ),
+    ).toBe(true);
   });
 });
