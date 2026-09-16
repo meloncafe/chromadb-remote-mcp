@@ -1,6 +1,6 @@
 services:
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6
     container_name: chromadb
     expose:
       - "8000"
@@ -36,6 +36,36 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - NODE_NO_WARNINGS=1
       - ORT_LOGGING_LEVEL=3
+      # v2.0.0: Embedding provider
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS}
+      - EMBEDDING_API_BASE=${EMBEDDING_API_BASE}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # v2.0.0: Confidence gating
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD}
+      # v2.0.0: Reranker (fail-soft)
+      - RERANKER_API_BASE=${RERANKER_API_BASE}
+      - RERANKER_API_KEY=${RERANKER_API_KEY}
+      - RERANKER_MODEL=${RERANKER_MODEL}
+      # v2.0.0: OAuth 2.1 OIDC multi-provider
+      - OIDC_ISSUERS=${OIDC_ISSUERS}
+      - OIDC_PRESET=${OIDC_PRESET}
+      - OIDC_AUDIENCE=${OIDC_AUDIENCE}
+      - OIDC_SCOPES=${OIDC_SCOPES}
+      - OIDC_LOG_SUB_MODE=${OIDC_LOG_SUB_MODE}
+      # v2.0.0: Legacy v1 collection compat
+      - LEGACY_COLLECTION_COMPAT=${LEGACY_COLLECTION_COMPAT}
+      # v2.1.0: OAuth 2.1 Authorization Server Proxy
+      - OAUTH_PROXY_ENABLED=${OAUTH_PROXY_ENABLED}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - OAUTH_PROXY_BASE_URL=${OAUTH_PROXY_BASE_URL}
+      - OAUTH_PROXY_GOOGLE_SCOPES=${OAUTH_PROXY_GOOGLE_SCOPES}
+      - OAUTH_PROXY_STORE_MAX=${OAUTH_PROXY_STORE_MAX}
+      # v2.1.1: pre-shared client_id 허용 flag (LibreChat 패턴)
+      - OAUTH_PROXY_ALLOW_PRESHARED_CLIENT=${OAUTH_PROXY_ALLOW_PRESHARED_CLIENT}
     depends_on:
       - chromadb
     networks:

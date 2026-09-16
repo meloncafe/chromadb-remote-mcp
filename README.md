@@ -15,18 +15,6 @@ A **Streamable HTTP** MCP (Model Context Protocol) server that provides remote a
 
 ---
 
-## Sponsors
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/termius-logo-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="assets/termius-logo-light.svg" />
-  <img alt="Termius Logo" src="assets/termius-logo-light.svg" width="200" />
-</picture>
-
-Termius provides a secure, reliable, and collaborative SSH client.
-
----
-
 ## Cross-Platform AI Memory Server
 
 **Compatible with ALL major AI platforms:**
@@ -245,7 +233,6 @@ cp .env.example .env
 | `CHROMA_AUTH_TOKEN` | ChromaDB auth token (if ChromaDB requires auth)                      | -                  | No                          |
 | `RATE_LIMIT_MAX`    | Max requests per IP per 15 minutes                                   | `100`              | No                          |
 | `ALLOWED_ORIGINS`   | Comma-separated list of allowed origins (DNS rebinding protection)   | -                  | No                          |
-| `ALLOW_QUERY_AUTH`  | Enable authentication via query parameters (`?apiKey=TOKEN`)         | `true`             | No                          |
 
 ### Authentication
 
@@ -274,25 +261,22 @@ docker compose restart
 # or: docker-compose restart
 ```
 
-**Supported authentication methods:**
+**Supported authentication methods (v2.0.0):**
 
-1. **Authorization Header** (Most Secure): `Authorization: Bearer TOKEN`
+1. **`Authorization: Bearer TOKEN`** — only supported way to send `MCP_AUTH_TOKEN`.
 
-   - Recommended for API clients and automated tools
-   - Compliant with MCP specification
-   - Example: `curl -H "Authorization: Bearer YOUR_TOKEN"`
+   - Recommended for service-to-service callers (API clients, scripts, MCP relays).
+   - Compliant with MCP specification.
+   - Example: `curl -H "Authorization: Bearer YOUR_TOKEN" https://your-server.com/mcp`
 
-2. **X-Chroma-Token Header**: `X-Chroma-Token: TOKEN`
+2. **OAuth 2.1 / OpenID Connect** — recommended for human users.
 
-   - For ChromaDB Python/JavaScript libraries
-   - Compatible with ChromaDB client SDKs
-   - Example: `client = chromadb.HttpClient(headers={"X-Chroma-Token": "TOKEN"})`
+   - Set `OIDC_ISSUERS` (comma-separated issuer URLs) or `OIDC_PRESET=google,github,microsoft`.
+   - Set `OIDC_AUDIENCE` to the resource identifier (typically your MCP server's public URL).
+   - The server publishes RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`.
+   - 401 responses include `WWW-Authenticate: Bearer error="...", resource_metadata="..."` per RFC 6750.
 
-3. **Query Parameter** (Default Enabled): `?apiKey=TOKEN`
-   - **Required for Claude Desktop Custom Connector**
-   - Enables browser-based integrations
-   - Enabled by default (`ALLOW_QUERY_AUTH=true`)
-   - Set `ALLOW_QUERY_AUTH=false` to disable if not needed
+> **Removed in v2.0.0:** `X-Chroma-Token` header and `?apiKey=` / `?token=` / `?api_key=` query-parameter auth are no longer accepted. Clients that previously used those paths must migrate to `Authorization: Bearer`. The `ALLOW_QUERY_AUTH` env var is ignored.
 
 ### Origin Header Validation (DNS Rebinding Protection)
 
@@ -373,7 +357,7 @@ docker compose restart
 2. Click "Add Custom Server"
 3. Enter:
    - **Name**: `ChromaDB`
-   - **URL**: `https://your-server.com/mcp?apiKey=YOUR_TOKEN`
+   - **URL**: `https://your-server.com/mcp` (set `Authorization: Bearer YOUR_TOKEN` in the connector's header config)
 
 > **Note**: Custom connector automatically syncs to the mobile app. Authentication is mandatory for remote access.
 
@@ -393,7 +377,7 @@ If you don't have access to Custom Connectors, use the `mcp-remote` package as a
   "mcpServers": {
     "chromadb": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://your-server.com/mcp?apiKey=YOUR_TOKEN"]
+      "args": ["-y", "mcp-remote", "https://your-server.com/mcp", "--header", "Authorization: Bearer YOUR_TOKEN"]
     }
   }
 }
@@ -412,7 +396,8 @@ Restart Claude Desktop after editing the file.
 claude mcp add --transport http chromadb https://your-server.com/mcp
 
 # With authentication (Query Parameter - Recommended)
-claude mcp add --transport http chromadb https://your-server.com/mcp?apiKey=YOUR_TOKEN
+claude mcp add --transport http chromadb https://your-server.com/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
 
 # With authentication (Header)
 claude mcp add --transport http chromadb https://your-server.com/mcp \
@@ -424,26 +409,60 @@ claude mcp list
 
 ---
 
-## Available Tools
+## Available Tools (v2.2.0)
 
-The MCP server provides these tools for Claude:
+The MCP server provides these tools for Claude. v2.2.0 expands coverage to 30 tools across collection / document / search / fork / client-info / admin / destructive groups.
 
 ### Collection Management
 
-- `chroma_list_collections` - List all collections
-- `chroma_create_collection` - Create a new collection
+- `chroma_list_collections` - List all collections (with `limit` / `offset`)
+- `chroma_create_collection` - Create a new collection (`configuration` / `schema` optional)
+- `chroma_get_or_create_collection` - Idempotent create-or-get (v2.2.0)
+- `chroma_modify_collection` - Rename / change metadata or configuration (v2.2.0)
 - `chroma_delete_collection` - Delete a collection
 - `chroma_get_collection_info` - Get collection metadata
-- `chroma_get_collection_count` - Get document count
+- `chroma_get_collection_count` - Get document count (`read_level` optional)
+- `chroma_count_collections` - Total collection count (v2.2.0)
 - `chroma_peek_collection` - Preview collection contents
 
 ### Document Operations
 
-- `chroma_add_documents` - Add documents with embeddings
-- `chroma_query_documents` - Semantic search (vector similarity)
-- `chroma_get_documents` - Retrieve documents by ID or filter
-- `chroma_update_documents` - Update existing documents
-- `chroma_delete_documents` - Delete documents
+- `chroma_add_documents` - Add documents (with `uris` for multi-modal)
+- `chroma_upsert_documents` - Idempotent insert-or-update (v2.2.0)
+- `chroma_query_documents` - Semantic search (with `query_uris` / `ids` pre-filter)
+- `chroma_get_documents` - Retrieve documents (`read_level` optional)
+- `chroma_update_documents` - Update existing documents (with `embeddings` / `uris`)
+- `chroma_delete_documents` - Delete by `ids` and/or `where` / `where_document` filter
+
+### Server Info (v2.2.0)
+
+- `chroma_heartbeat` - Server heartbeat (nanosecond timestamp)
+- `chroma_get_server_version` - Server version string
+- `chroma_get_max_batch_size` - Max batch size (for client-side splitting)
+- `chroma_get_user_identity` - Current tenant + databases
+
+### Distributed/Cloud-only — opt-in (`CHROMA_DISTRIBUTED_TOOLS_ENABLED=true`)
+
+These 4 tools require ChromaDB's **distributed executor** (the executor is the chromadb-server-internal frontend layer, not an algorithmic distribution requirement). The single-node open-source server (`chromadb/chroma:latest` docker) ships with the **local executor**, which has these methods hard-coded as `unimplemented` in [`rust/frontend/src/executor/local.rs`](https://github.com/chroma-core/chroma/blob/main/rust/frontend/src/executor/local.rs) and [`rust/types/src/api_types.rs`](https://github.com/chroma-core/chroma/blob/main/rust/types/src/api_types.rs). To use them you need either Chroma Cloud (`CloudClient`) or a self-hosted distributed Chroma deployment (Kubernetes multi-component: frontend + query executor + WAL + compactor + object storage).
+
+Hidden by default so single-node deployments don't waste LLM context on tools that always return `"not implemented for local executor"` / `"unsupported for local chroma"`.
+
+- `chroma_search` - Hybrid dense + sparse search (RRF). The algorithm itself works on a single node; chromadb open-source simply hasn't implemented the `search()` endpoint in the local executor.
+- `chroma_fork_collection` - Zero-copy fork (segment-level operation on object storage — architecturally requires the distributed compactor/storage stack).
+- `chroma_get_fork_count` - Fork metadata lookup (depends on the distributed metadata store).
+- `chroma_get_indexing_status` - WAL offset + compactor index progress (requires the distributed WAL/compactor services).
+
+### Admin — opt-in (`CHROMA_ADMIN_TOOLS_ENABLED=true`)
+
+- `chroma_admin_create_database` / `chroma_admin_get_database` / `chroma_admin_list_databases`
+- `chroma_admin_create_tenant` / `chroma_admin_get_tenant`
+
+### Destructive — opt-in (`CHROMA_ALLOW_DESTRUCTIVE_OPS=true`)
+
+Calls emit a `[DESTRUCTIVE]` audit line.
+
+- `chroma_reset_database` - Reset entire database (irreversible)
+- `chroma_admin_delete_database` - Delete a database (requires both flags)
 
 ---
 
@@ -462,7 +481,7 @@ client = chromadb.HttpClient(
     port=443,
     ssl=True,
     headers={
-        "X-Chroma-Token": "YOUR_TOKEN"
+        "Authorization": "Bearer YOUR_TOKEN"
     }
 )
 
@@ -472,7 +491,7 @@ client = chromadb.HttpClient(
     port=8080,
     ssl=False,
     headers={
-        "X-Chroma-Token": "YOUR_TOKEN"
+        "Authorization": "Bearer YOUR_TOKEN"
     }
 )
 
@@ -661,17 +680,18 @@ curl -X POST https://your-server.com/mcp \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 
-# MCP endpoint (Query parameter)
-curl -X POST "https://your-server.com/mcp?apiKey=YOUR_TOKEN" \
+# MCP endpoint (Bearer token)
+curl -X POST "https://your-server.com/mcp" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 
 # ChromaDB REST API
 curl https://your-server.com/api/v2/heartbeat \
-  -H "X-Chroma-Token: YOUR_TOKEN"
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # Swagger UI (browser)
-https://your-server.com/docs?apiKey=YOUR_TOKEN
+https://your-server.com/docs  # send Authorization: Bearer YOUR_TOKEN header
 ```
 
 ---
@@ -685,7 +705,9 @@ https://your-server.com/docs?apiKey=YOUR_TOKEN
 curl http://localhost:8000/api/v2/heartbeat
 
 # Start ChromaDB with Docker
-docker run -d -p 8000:8000 chromadb/chroma:latest
+# WARNING: ChromaDB has no built-in authentication — do not publish on routable interface.
+# Bind to loopback only (127.0.0.1:8000:8000). Use MCP server as the authenticated gateway.
+docker run -d -p 127.0.0.1:8000:8000 chromadb/chroma:1.5.9
 
 # Check MCP server logs
 docker compose logs mcp-server
@@ -807,7 +829,7 @@ yarn test:keep
 **Integration Test Coverage:**
 
 - ✅ Health check endpoint
-- ✅ Authentication (Bearer token, X-Chroma-Token, query parameter)
+- ✅ Authentication (`Authorization: Bearer` MCP_AUTH_TOKEN; OAuth 2.1 / OIDC multi-provider)
 - ✅ MCP protocol (tools/list, tools/call)
 - ✅ ChromaDB REST API proxy
 - ✅ Collection CRUD operations
@@ -936,7 +958,7 @@ docker-compose up
 chromadb-remote-mcp/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/       # GitHub issue templates
-│   └── workflows/            # GitHub Actions (publish-release, security-scan, chromadb-version-check)
+│   └── workflows/            # GitHub Actions (publish-release, security-scan, chromadb-version-check.yml)
 ├── scripts/
 │   ├── build.sh             # Docker build and push script (multi-platform)
 │   ├── test.sh              # Integration test runner
@@ -957,6 +979,47 @@ chromadb-remote-mcp/
 ├── CHANGELOG.md             # Version history
 └── LICENSE                  # MIT license
 ```
+
+---
+
+## v2.2.3 Release Notes — CVE-2026-45829 Security Hardening
+
+> **⚠️ Breaking changes** — operators upgrading from v2.2.2 or earlier must read this section.
+
+### ChromaDB image version pinned (R4)
+
+All `docker-compose*.yml` files now pin `chromadb/chroma` to version `1.5.9@sha256:...`.
+Versions `1.0.0–1.5.8` are vulnerable to **CVE-2026-45829 (ChromaToast, CVSS 10.0)** —
+a pre-auth RCE via malicious embedding-function configuration. Do not downgrade the pin.
+
+A CI workflow (`.github/workflows/chromadb-version-check.yml`) fails the build if any
+docker-compose file references a version in the vulnerable range.
+
+### Dev fail-open removed (R1, breaking)
+
+Previously, starting the server without `MCP_AUTH_TOKEN` or `OIDC_ISSUERS`/`OIDC_PRESET`
+would succeed silently in non-production environments. This behaviour is **removed**.
+
+The server now **refuses to start** unless at least one auth method is configured or
+`ALLOW_INSECURE_NO_AUTH=true` is explicitly set.
+
+**Migration:**
+- Production: set `MCP_AUTH_TOKEN` or configure OIDC.
+- Local dev: add `ALLOW_INSECURE_NO_AUTH=true` to your `.env`.
+
+### ChromaDB REST catch-all proxy is now OFF by default (R3, breaking)
+
+The pass-through REST proxy (previously always mounted) is now **disabled unless**
+`CHROMA_REST_PROXY_ENABLED=true` is set. When disabled, all `/api/*` requests return 404.
+
+When enabled, the proxy enforces:
+- DNS-rebind protection (`validateOriginHeader`) — `Origin: evil.example` → 403
+- Authentication (always required; `ALLOW_INSECURE_NO_AUTH` does **not** bypass the proxy)
+- Path filter: collection create/modify/delete and embedding-function endpoints are blocked (403)
+- Body sanitize: `configuration.embedding_function` in POST/PUT/PATCH body → 400
+
+**Migration:** If you relied on direct `/api/v2/*` REST passthrough, set
+`CHROMA_REST_PROXY_ENABLED=true` and ensure authentication is configured.
 
 ---
 
@@ -992,3 +1055,78 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 ## Support
 
 If you encounter any issues or have questions, please [open an issue](https://github.com/meloncafe/chromadb-remote-mcp/issues).
+
+---
+
+## v2.0.0 Configuration
+
+> v2.0 introduces collection metadata schema v2, OAuth 2.1 OIDC, configurable embedding providers, and an optional reranker. See [MIGRATION.md](./MIGRATION.md) for the upgrade guide.
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `EMBEDDING_PROVIDER` | `chromadb-default` (English-only, default) / `external` / `openai_compatible` / `gemini` / `voyage` |
+| `EMBEDDING_MODEL` | Provider-specific model id. Stored in collection metadata. |
+| `EMBEDDING_DIMENSIONS` | Vector dimensions. Required for external mode; Gemini accepts 768/1536/3072. |
+| `EMBEDDING_API_BASE` | OpenAI-compatible endpoint base URL (Ollama / TEI / Voyage / Together / vLLM). |
+| `EMBEDDING_API_KEY` | Bearer key for `openai_compatible` or `voyage` providers. |
+| `GEMINI_API_KEY` | Google AI Studio API key for the `gemini` provider. |
+| `CONFIDENCE_THRESHOLD` | Default `min_score` (0-1). Tool argument has priority. |
+| `RERANKER_API_BASE` | OpenAI-compatible `/rerank` endpoint. Reranker is fail-soft. |
+| `RERANKER_API_KEY` | Optional bearer key for the reranker. |
+| `RERANKER_MODEL` | Reranker model id (default `bge-reranker-v2-m3`). |
+| `OIDC_ISSUERS` | Comma-separated OIDC issuer URLs. |
+| `OIDC_PRESET` | Convenience preset names: `google,github,microsoft`. |
+| `OIDC_AUDIENCE` | Expected `aud` claim. |
+| `OIDC_SCOPES` | Comma-separated scopes for the Protected Resource Metadata. |
+| `OIDC_LOG_SUB_MODE` | `full` for raw `sub`, otherwise SHA-256 first 12 chars (default). |
+| `MCP_AUTH_TOKEN` | **Service-to-service / CI / internal scripts only.** Use OAuth for human users. Coexists with OIDC — either method accepts. |
+| `LEGACY_COLLECTION_COMPAT` | `true` to allow read-only access to legacy v1 collections. Writes are still rejected. |
+
+### Recommended embedding + reranker combinations
+
+Verified locally on Korean RAG workloads (2026-05). Pick by priority:
+
+| Priority | Embedding | Reranker | Why |
+|----------|-----------|----------|-----|
+| Accuracy first (recommended) | `gemini` / `gemini-embedding-001` / 1536d | `cohere` / `rerank-multilingual-v3.0` | Gemini emits asymmetric query↔document vectors (`RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, self-distance ≈ 0.21 in our test); Cohere reorders short KR question↔answer pairs cleanly. |
+| Cost-balanced | `voyage` / `voyage-3` / 1024d | `cohere` / `rerank-multilingual-v3.0` | Voyage embeddings are ~1/2.5 the cost of Gemini and still asymmetric (`input_type` query/document, self-distance ≈ 0.56). |
+| Minimum embedding cost | `openai_compatible` / `text-embedding-3-small` / 1536d | `cohere` / `rerank-multilingual-v3.0` | Cheapest hosted embedding; symmetric vectors are weaker on short KR queries, so the reranker is essential. |
+| Self-hosted / offline | `openai_compatible` (Ollama / TEI / vLLM) | TEI `bge-reranker-v2-m3` or similar | No external API; latency depends on local hardware. |
+
+Notes from the verification run:
+
+- Voyage `rerank-2` did NOT reorder the short KR question↔answer pair used in this test — keep Cohere as the rerank default for KR until your own corpus shows otherwise.
+- The reranker layer is fail-soft: leave `RERANKER_API_BASE` unset to disable reranking without code changes.
+- Set `CONFIDENCE_THRESHOLD` (or per-call `min_score`) to drop low-similarity hits; the server emits `confidence_gate: "no_confident_match"` when every result is filtered.
+
+### Docker Compose snippet (Gemini + Google OAuth)
+
+```yaml
+services:
+  mcp-server:
+    image: devsaurus/chromadb-remote-mcp:2.0.0
+    environment:
+      EMBEDDING_PROVIDER: gemini
+      EMBEDDING_MODEL: gemini-embedding-001
+      EMBEDDING_DIMENSIONS: "1536"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      OIDC_PRESET: google
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE}  # e.g. your client_id
+      CONFIDENCE_THRESHOLD: "0.55"
+      RERANKER_API_BASE: "http://desktop-gpu.tail-xxxx.ts.net:8001"
+      RERANKER_MODEL: bge-reranker-v2-m3
+```
+
+### OAuth flow
+
+1. Configure your IdP (Google / GitHub / Microsoft) to issue tokens for an audience that matches `OIDC_AUDIENCE`.
+2. Set `OIDC_PRESET=google` (or `OIDC_ISSUERS=...` for custom IdPs) and `OIDC_AUDIENCE=...`.
+3. Clients send `Authorization: Bearer <token>` to `/mcp`.
+4. 401 responses include `WWW-Authenticate: Bearer error="...", resource_metadata="<base>/.well-known/oauth-protected-resource"` per RFC 9728.
+5. `MCP_AUTH_TOKEN` remains valid alongside OAuth — recommended for non-interactive workloads.
+
+### Reading legacy v1 collections
+
+Set `LEGACY_COLLECTION_COMPAT=true` to allow read-only access. Writes (`chroma_add_documents` / `update` / `delete`) on v1 collections still return `Error: Cannot write to legacy v1 collection`. See [MIGRATION.md](./MIGRATION.md).

@@ -1,6 +1,6 @@
 import express from "express";
 import type {ClientRequest, Server as HttpServer} from "http";
-import {createProxyMiddleware} from "http-proxy-middleware";
+import {createProxyMiddleware, fixRequestBody} from "http-proxy-middleware";
 import {ChromaClient} from "chromadb";
 import {Server} from "@modelcontextprotocol/sdk/server/index.js";
 import {StreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -17,8 +17,44 @@ import {
 import {config} from "dotenv";
 import rateLimit from "express-rate-limit";
 import {timingSafeEqual} from "crypto";
-import {createChromaTools, handleChromaTool} from "./chroma-tools.js";
+import {createChromaTools, handleChromaTool, ADMIN_TOOLS_ENABLED, DESTRUCTIVE_OPS_ENABLED} from "./chroma-tools.js";
+import { getAdminClient } from "./admin-client.js";
 import type {ChromaConfig} from "./types.js";
+import {
+  resolveEmbeddingProviderConfig,
+  embeddingProviderConfig,
+} from "./embedding-config.js";
+import { oidcAuthMiddleware } from "./auth/middleware.js";
+import { protectedResourceHandler } from "./auth/protected-resource.js";
+import { createOAuthProxyRouter } from "./auth/oauth-proxy/index.js";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
+
+// R6: package.json 의 version 을 시작 시 한 번 로드 (banner 등에서 재사용).
+// 옵션 (c) 채택 — tsconfig rootDir: "./src" 가 옵션 (a) static JSON import 를 거부.
+// import.meta.url 사용을 회피하고 process.cwd() 기반 후보 경로 검색 (ts-jest 호환).
+// build 산출물 (build/index.js) 가 docker WORKDIR (= 패키지 루트) 에서 실행되거나,
+// jest 가 패키지 루트를 cwd 로 실행하므로 첫 번째 후보가 매칭된다.
+const PACKAGE_VERSION: string = (() => {
+  const candidates = [
+    path.join(process.cwd(), "package.json"),
+    path.join(process.cwd(), "..", "package.json"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = readFileSync(candidate, "utf-8");
+      const parsed = JSON.parse(raw) as { name?: unknown; version?: unknown };
+      // chroma-remote-mcp 패키지의 package.json 만 인정 — 모노레포 root 의 package.json
+      // (다른 name) 이 잘못 매칭되는 것을 방지.
+      if (parsed.name === "chroma-remote-mcp" && typeof parsed.version === "string" && parsed.version.length > 0) {
+        return parsed.version;
+      }
+    } catch {
+      // continue — 다음 후보 시도.
+    }
+  }
+  return "unknown";
+})();
 
 export interface Closeable {
   close(): void;
@@ -194,16 +230,68 @@ export function validateEnvironmentVariables() {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const isProduction = process.env.NODE_ENV === "production";
+  // R1 (CVE-2026-45829): fail-closed authentication gate — NODE_ENV is irrelevant.
+  // At least one auth method (OIDC issuer or MCP_AUTH_TOKEN) must be configured,
+  // OR the operator must explicitly opt-in with ALLOW_INSECURE_NO_AUTH=true.
+  const hasOidcIssuers = !!(process.env.OIDC_ISSUERS || process.env.OIDC_PRESET);
+  const hasMcpToken = !!process.env.MCP_AUTH_TOKEN;
+  const allowInsecure = process.env.ALLOW_INSECURE_NO_AUTH === "true";
 
-  if (isProduction && !process.env.MCP_AUTH_TOKEN) {
-    errors.push("❌ CRITICAL: MCP_AUTH_TOKEN is required in production environment");
+  if (!hasOidcIssuers && !hasMcpToken) {
+    if (allowInsecure) {
+      warnings.push(
+        "⚠️  ALLOW_INSECURE_NO_AUTH=true — no authentication configured. This is insecure and must not be used in production.",
+      );
+    } else {
+      errors.push(
+        "❌ CRITICAL: No authentication configured. Set MCP_AUTH_TOKEN, OIDC_ISSUERS/OIDC_PRESET, or ALLOW_INSECURE_NO_AUTH=true (insecure, dev only).",
+      );
+    }
   }
 
-  if (!process.env.MCP_AUTH_TOKEN && !isProduction) {
-    warnings.push(
-      "⚠️  MCP_AUTH_TOKEN not set - authentication is disabled (not recommended for production)",
-    );
+  // R2 (CVE-2026-45829): OIDC_AUDIENCE is required when OIDC issuers are configured,
+  // unless OAuth Proxy mode is enabled (GOOGLE_OAUTH_CLIENT_ID serves as audience in that case).
+  if (hasOidcIssuers) {
+    const hasAudience = !!(process.env.OIDC_AUDIENCE ||
+      (process.env.OAUTH_PROXY_ENABLED === "true" && process.env.GOOGLE_OAUTH_CLIENT_ID));
+    if (!hasAudience) {
+      errors.push("OIDC_AUDIENCE is required when OIDC issuers are configured");
+    }
+  }
+
+  // E1 (CVE-2026-45829): CHROMA_REST_PROXY_ENABLED=true without any auth is always
+  // rejected — even ALLOW_INSECURE_NO_AUTH=true cannot bypass this, because
+  // "the proxy is always authenticated or disabled" (R1 constraint).
+  if (process.env.CHROMA_REST_PROXY_ENABLED === "true") {
+    if (!hasOidcIssuers && !hasMcpToken) {
+      errors.push(
+        "❌ CRITICAL: CHROMA_REST_PROXY_ENABLED requires auth — set MCP_AUTH_TOKEN or OIDC_ISSUERS/OIDC_PRESET. The REST proxy cannot be activated without authentication (ALLOW_INSECURE_NO_AUTH does not bypass this).",
+      );
+    }
+  }
+
+  // R3: OAuth proxy requires Google client credentials when enabled.
+  // Validated at boot so misconfigured deployments fail fast instead of
+  // silently 500'ing on the first /oauth/authorize request.
+  if (isOAuthProxyEnabled()) {
+    if (!process.env.GOOGLE_OAUTH_CLIENT_ID) {
+      errors.push(
+        "❌ CRITICAL: GOOGLE_OAUTH_CLIENT_ID is required when OAUTH_PROXY_ENABLED=true",
+      );
+    }
+    if (!process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+      errors.push(
+        "❌ CRITICAL: GOOGLE_OAUTH_CLIENT_SECRET is required when OAUTH_PROXY_ENABLED=true",
+      );
+    }
+    // R6.c (CVE-2026-45829): OAUTH_PROXY_BASE_URL is required when OAuth proxy is
+    // enabled. Without it, canonical URLs in OAuth metadata responses are derived
+    // from X-Forwarded-Host (spoofable) → redirect OAuth flows to attacker servers.
+    if (!process.env.OAUTH_PROXY_BASE_URL || !process.env.OAUTH_PROXY_BASE_URL.trim()) {
+      errors.push(
+        "OAUTH_PROXY_BASE_URL is required when OAUTH_PROXY_ENABLED=true (set to the public base URL of this server, e.g. https://mcp.example.com)",
+      );
+    }
   }
 
   if (process.env.CHROMA_PORT) {
@@ -229,16 +317,36 @@ export function validateEnvironmentVariables() {
     }
   }
 
-  if (process.env.ALLOW_QUERY_AUTH && !["true", "false"].includes(process.env.ALLOW_QUERY_AUTH)) {
-    warnings.push(
-      `⚠️  Invalid ALLOW_QUERY_AUTH: ${process.env.ALLOW_QUERY_AUTH} (must be 'true' or 'false', defaulting to false)`,
-    );
+  // R20–R26: AdminClient tools opt-in. Accepted values: "true" / "false" / unset.
+  // Anything else is a configuration error — warn so operators notice, but do
+  // not fail boot (the flag effectively defaults to false on invalid values).
+  if (process.env.CHROMA_ADMIN_TOOLS_ENABLED !== undefined) {
+    const raw = process.env.CHROMA_ADMIN_TOOLS_ENABLED.trim().toLowerCase();
+    if (raw !== "true" && raw !== "false" && raw !== "") {
+      warnings.push(
+        `⚠️  CHROMA_ADMIN_TOOLS_ENABLED has invalid value "${process.env.CHROMA_ADMIN_TOOLS_ENABLED}" — expected "true" or "false". Treating as false (admin tools disabled).`,
+      );
+    }
   }
 
-  if (isProduction && process.env.ALLOW_QUERY_AUTH === "true") {
-    warnings.push(
-      "⚠️  ALLOW_QUERY_AUTH=true in production violates MCP spec (MUST NOT) - consider using Authorization header",
-    );
+  // R25–R26: Destructive operations opt-in. Same accepted-values contract.
+  if (process.env.CHROMA_ALLOW_DESTRUCTIVE_OPS !== undefined) {
+    const raw = process.env.CHROMA_ALLOW_DESTRUCTIVE_OPS.trim().toLowerCase();
+    if (raw !== "true" && raw !== "false" && raw !== "") {
+      warnings.push(
+        `⚠️  CHROMA_ALLOW_DESTRUCTIVE_OPS has invalid value "${process.env.CHROMA_ALLOW_DESTRUCTIVE_OPS}" — expected "true" or "false". Treating as false (destructive ops disabled).`,
+      );
+    }
+  }
+
+  // R5/R6/R7: Distributed-executor tools opt-in. Same accepted-values contract.
+  if (process.env.CHROMA_DISTRIBUTED_TOOLS_ENABLED !== undefined) {
+    const raw = process.env.CHROMA_DISTRIBUTED_TOOLS_ENABLED.trim().toLowerCase();
+    if (raw !== "true" && raw !== "false" && raw !== "") {
+      warnings.push(
+        `⚠️  CHROMA_DISTRIBUTED_TOOLS_ENABLED has invalid value "${process.env.CHROMA_DISTRIBUTED_TOOLS_ENABLED}" — expected "true" or "false". Treating as false (distributed tools disabled — single-node executor assumed).`,
+      );
+    }
   }
 
   warnings.forEach((warning) => console.warn(warning));
@@ -266,6 +374,32 @@ const chromaConfig: ChromaConfig = {
   tenantName: process.env.CHROMA_TENANT || "default_tenant",
   databaseName: process.env.CHROMA_DATABASE || "default_database",
 };
+
+/**
+ * Parses `OAUTH_PROXY_ENABLED` env var as a strict boolean.
+ * Returns true only when the value is exactly the string "true"
+ * (case-insensitive). All other values (unset, "", "false", "0",
+ * "no", etc.) return false. This is the v2.1.0 opt-in flag for
+ * the Google OAuth Authorization-Server proxy.
+ */
+export function isOAuthProxyEnabled(): boolean {
+  const raw = process.env.OAUTH_PROXY_ENABLED;
+  if (typeof raw !== "string") return false;
+  return raw.trim().toLowerCase() === "true";
+}
+
+/**
+ * R3 (CVE-2026-45829): Returns true only when CHROMA_REST_PROXY_ENABLED is exactly "true".
+ * Default is OFF — the catch-all ChromaDB REST proxy is NOT mounted unless explicitly
+ * opted in by the operator. Mirrors isOAuthProxyEnabled() pattern.
+ */
+export function isRestProxyEnabled(): boolean {
+  const raw = process.env.CHROMA_REST_PROXY_ENABLED;
+  if (typeof raw !== "string") return false;
+  return raw.trim().toLowerCase() === "true";
+}
+
+export { resolveEmbeddingProviderConfig, embeddingProviderConfig };
 
 /**
  * Waits for ChromaDB server to become available with retry logic.
@@ -577,7 +711,50 @@ export async function callToolHandler(request: {
   params: { name: string; arguments?: Record<string, unknown> };
 }) {
   const {name, arguments: args} = request.params;
-  return handleChromaTool(getChromaClient(), name, args || {});
+  const safeArgs = args || {};
+
+  // Destructive tools — gated by CHROMA_ALLOW_DESTRUCTIVE_OPS at boot.
+  // Defense-in-depth: createChromaTools() already omits these from tools/list
+  // when the flag is false, but the runtime guard below catches direct calls
+  // (e.g. via prompts/clients that bypass tools/list).
+  const DESTRUCTIVE_TOOL_NAMES = new Set([
+    "chroma_reset_database",
+    "chroma_admin_delete_database",
+  ]);
+  if (DESTRUCTIVE_TOOL_NAMES.has(name) && !DESTRUCTIVE_OPS_ENABLED) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Tool "${name}" is disabled. Set CHROMA_ALLOW_DESTRUCTIVE_OPS=true to enable destructive operations.`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // AdminClient tools — gated by CHROMA_ADMIN_TOOLS_ENABLED at boot.
+  // The lazy AdminClient is constructed on first admin call. Phase 5 will
+  // extend handleChromaTool to consume the admin client; for now, the import
+  // exists and getAdminClient() is referenced so the linker keeps the symbol.
+  if (name.startsWith("chroma_admin_")) {
+    if (!ADMIN_TOOLS_ENABLED) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Tool "${name}" is disabled. Set CHROMA_ADMIN_TOOLS_ENABLED=true to enable admin tools.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+    // Eagerly resolve the admin client so initialization errors surface here
+    // (Phase 5 handlers will retrieve it via the same singleton).
+    void getAdminClient();
+  }
+
+  return handleChromaTool(getChromaClient(), name, safeArgs, embeddingProviderConfig);
 }
 
 // ============================================================================
@@ -980,7 +1157,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: "chroma-remote-mcp",
-      version: "1.0.2",
+      version: "2.0.0",
     },
     {
       capabilities: {
@@ -988,7 +1165,7 @@ export function createServer(): Server {
         prompts: {},
         resources: {},
         logging: {},
-        completion: {},
+        completions: {},
       },
     },
   );
@@ -1234,6 +1411,91 @@ export function securityHeaders(
 // Apply security headers
 app.use(securityHeaders);
 
+/**
+ * Returns the effective CORS allow-list:
+ *   defaults + ALLOWED_ORIGINS env (comma-separated) + localhost-via-pattern
+ *
+ * Defaults cover the OAuth proxy clients we know about:
+ *   - https://claude.ai            (Claude.ai web app)
+ *   - https://api.anthropic.com    (server-to-server callbacks)
+ *   - https://dash.cloudflare.com  (Cloudflare AI Gateway dashboard)
+ *
+ * Localhost (any port) is always allowed for development. The env var is
+ * shared with validateOriginHeader so operators don't have to maintain two
+ * lists.
+ */
+export function getCorsAllowedOrigins(): string[] {
+  const defaults = [
+    "https://claude.ai",
+    "https://api.anthropic.com",
+    "https://dash.cloudflare.com",
+  ];
+  const custom =
+    process.env.ALLOWED_ORIGINS?.split(",")
+      .map((o) => o.trim())
+      .filter(Boolean) || [];
+  return Array.from(new Set([...defaults, ...custom]));
+}
+
+const CORS_LOCALHOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1])(:\d+)?$/;
+
+/**
+ * CORS middleware for browser-based OAuth clients (Claude.ai, Cloudflare
+ * dashboard, mcp-remote, etc.). Without this, browsers reject the cross-
+ * origin POST to /oauth/token even though our server processed the request
+ * — the response just has no Access-Control-Allow-Origin header.
+ *
+ * Distinct from validateOriginHeader: this MIDDLEWARE runs first, sets the
+ * CORS response headers (so the browser unwraps the response), and short-
+ * circuits OPTIONS preflights with 204. validateOriginHeader still gates
+ * non-OPTIONS requests on /mcp for DNS-rebinding protection.
+ */
+export function corsMiddleware(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  const origin = req.headers.origin;
+
+  // No Origin header → server-to-server, nothing to do.
+  if (!origin) {
+    if (req.method === "OPTIONS") {
+      // Preflight without Origin shouldn't happen, but respond cleanly.
+      res.status(204).end();
+      return;
+    }
+    return next();
+  }
+
+  const allowed = getCorsAllowedOrigins();
+  const matched = allowed.includes(origin) || CORS_LOCALHOST_PATTERN.test(origin);
+
+  if (matched) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Authorization, Content-Type, MCP-Session-Id, MCP-Protocol-Version, Accept",
+    );
+    res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, WWW-Authenticate");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    // No Access-Control-Allow-Credentials — we use Bearer tokens, not cookies.
+  }
+
+  // Short-circuit preflight regardless of allowlist match. If origin is
+  // not allowed, browser sees a 204 with no ACAO header → blocks the actual
+  // request, which is the correct outcome.
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
+  return next();
+}
+
+app.use(corsMiddleware);
+
 // MCP Spec: Servers MUST validate Origin header to prevent DNS rebinding attacks
 export function validateOriginHeader(
   req: express.Request,
@@ -1277,96 +1539,7 @@ export function validateOriginHeader(
   });
 }
 
-// Optional Authentication Middleware (supports multiple auth methods)
-export const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
-
-// Factory function for creating auth middleware (testable)
-export function createAuthMiddleware(authToken?: string) {
-  return function authenticate(
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction,
-  ) {
-    // Skip auth if authToken is not set
-    if (!authToken) {
-      return next();
-    }
-
-    let providedToken: string | undefined;
-
-    // Method 1: Authorization header (RECOMMENDED - MCP spec compliant)
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-      providedToken = authHeader.substring(7); // Remove 'Bearer ' prefix
-    }
-
-    // Method 2: X-Chroma-Token header (RECOMMENDED - ChromaDB compatibility)
-    if (!providedToken) {
-      providedToken = req.headers["x-chroma-token"] as string;
-    }
-
-    // Method 3: Query parameter (DEPRECATED - MCP spec violation: MUST NOT)
-    // Only enabled if ALLOW_QUERY_AUTH=true environment variable is set
-    if (!providedToken && process.env.ALLOW_QUERY_AUTH === "true") {
-      providedToken =
-        (req.query.apiKey as string) ||
-        (req.query.token as string) ||
-        (req.query.api_key as string);
-
-      if (providedToken) {
-        logWarn(
-          "⚠️  Query parameter authentication is DEPRECATED and violates MCP spec (MUST NOT). Use Authorization header instead.",
-        );
-      }
-    }
-
-    // No token provided - Return 401 with WWW-Authenticate header (MCP spec: MUST)
-    if (!providedToken) {
-      res.setHeader("WWW-Authenticate", 'Bearer realm="MCP Server", charset="UTF-8"');
-      return res.status(401).json({
-        error:
-          "Unauthorized: Missing authentication. Provide token via Authorization header or X-Chroma-Token header",
-      });
-    }
-
-    // Validate token using constant-time comparison to prevent timing attacks
-    try {
-      const providedBuffer = Buffer.from(providedToken);
-      const expectedBuffer = Buffer.from(authToken);
-
-      // If lengths differ, still perform comparison to prevent timing attacks
-      if (providedBuffer.length !== expectedBuffer.length) {
-        res.setHeader(
-          "WWW-Authenticate",
-          'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
-        );
-        return res.status(401).json({error: "Unauthorized: Invalid token"});
-      }
-
-      // Use constant-time comparison
-      if (!timingSafeEqual(providedBuffer, expectedBuffer)) {
-        res.setHeader(
-          "WWW-Authenticate",
-          'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
-        );
-        return res.status(401).json({error: "Unauthorized: Invalid token"});
-      }
-    } catch (_error) {
-      // If any error occurs during comparison, deny access
-      res.setHeader(
-        "WWW-Authenticate",
-        'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
-      );
-      return res.status(401).json({error: "Unauthorized: Invalid token"});
-    }
-
-    // Token is valid
-    return next();
-  };
-}
-
-// Default middleware instance using environment variable
-export const authenticateMCP = createAuthMiddleware(MCP_AUTH_TOKEN);
+const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
 
 // Close handler for MCP requests - exported for testing
 export function createCloseHandler(server: Closeable, transport: Closeable) {
@@ -1427,12 +1600,26 @@ export async function mcpHandler(req: express.Request, res: express.Response) {
 
 // MCP endpoint - Streamable HTTP Transport (with protocol version, origin validation and optional auth)
 // This must be defined BEFORE the catch-all proxy
-app.post("/mcp", validateProtocolVersion, validateOriginHeader, authenticateMCP, mcpHandler);
+app.post("/mcp", validateProtocolVersion, validateOriginHeader, oidcAuthMiddleware, mcpHandler);
+app.post("/", validateProtocolVersion, validateOriginHeader, oidcAuthMiddleware, mcpHandler);
 
-// Health check handler - exported for testing
+// Health check handler — minimal unauthenticated liveness probe.
+// R6.b (CVE-2026-45829): Only {status:"ok"} is returned without authentication.
+// Internal ChromaDB host:port and connection details are moved to /health/detail
+// (authenticated) to prevent information exposure.
 export async function healthHandler(_req: express.Request, res: express.Response) {
   try {
-    // Test actual ChromaDB connection
+    await getChromaClient().heartbeat();
+    res.json({ status: "ok" });
+  } catch (_error) {
+    res.status(503).json({ status: "error" });
+  }
+}
+
+// Health detail handler — authenticated endpoint exposing chroma host:port and
+// connection status. Intended for operators / authenticated probers.
+export async function healthDetailHandler(_req: express.Request, res: express.Response) {
+  try {
     await getChromaClient().heartbeat();
     res.json({
       status: "ok",
@@ -1450,8 +1637,33 @@ export async function healthHandler(_req: express.Request, res: express.Response
   }
 }
 
-// Health check endpoint (no authentication required)
+// Health check endpoint (no authentication required) — minimal {status:"ok"} only.
 app.get("/health", healthHandler);
+
+// Authenticated health detail endpoint — chroma host:port + connection status.
+app.get("/health/detail", oidcAuthMiddleware, healthDetailHandler);
+
+// RFC 9728 Protected Resource Metadata — public (no auth required)
+app.get("/.well-known/oauth-protected-resource", protectedResourceHandler);
+
+// R8/R13: Mount OAuth Authorization-Server proxy when explicitly enabled.
+// The router exposes 5 endpoints:
+//   GET  /.well-known/oauth-authorization-server   (RFC 8414)
+//   POST /oauth/register                            (RFC 7591 DCR)
+//   GET  /oauth/authorize                           → 302 to Google
+//   GET  /oauth/callback                            ← from Google
+//   POST /oauth/token                               (PKCE + id_token passthrough)
+//
+// Global middleware order (already installed earlier in this file):
+//   1. express.json (only on /mcp; oauth-proxy router mounts its own body parsers)
+//   2. limiter (rate limit — applies to oauth-proxy router too)
+//   3. createTimeoutMiddleware
+//   4. securityHeaders
+//
+// So mounting the router here puts it AFTER the limiter, satisfying R13.
+if (isOAuthProxyEnabled()) {
+  app.use(createOAuthProxyRouter());
+}
 
 // Proxy handlers - exported for testing
 // proxyReq type is from http-proxy-middleware internal types
@@ -1503,18 +1715,137 @@ export function trackConnection(
 app.use(trackConnection);
 
 // ChromaDB REST API Proxy (catch-all for all other requests)
-// This must be LAST to catch all non-MCP, non-health requests
-app.use(
-  authenticateMCP,
-  createProxyMiddleware({
-    target: `http://${chromaConfig.host}:${chromaConfig.port}`,
-    changeOrigin: true,
-    on: {
-      proxyReq: proxyReqHandler,
-      error: proxyErrorHandler,
+// R3 (CVE-2026-45829): Gated behind CHROMA_REST_PROXY_ENABLED=true (default OFF).
+// When disabled (default), all /api/* requests will fall through to 404.
+// When enabled, the chain is:
+//   validateOriginHeader (DNS-rebind defense) →
+//   oidcAuthMiddleware (always enforced — ALLOW_INSECURE_NO_AUTH does not bypass) →
+//   pathFilter (collection create/modify + embedding-function paths blocked) →
+//   proxyReq body sanitize (embedding_function keys stripped/rejected)
+if (isRestProxyEnabled()) {
+  // R3.a: pathFilter — allowlist everything except collection write + embedding-function paths.
+  // Blocked patterns (all HTTP methods): collection create/modify/delete operations and
+  // embedding-function configuration endpoints that could trigger CVE-2026-45829.
+  // Returns true = FORWARD, false = BLOCK.
+  function restProxyPathFilter(pathname: string, req: express.Request): boolean {
+    const method = (req.method || "GET").toUpperCase();
+    // Block any path containing /embedding or /embedding_function (CVE sink)
+    if (/\/embedding/i.test(pathname)) {
+      return false;
+    }
+    // Block collection creation / modification / deletion:
+    //   POST   .../collections           (create)
+    //   PUT    .../collections/:id       (modify)
+    //   PATCH  .../collections/:id       (modify)
+    //   DELETE .../collections/:id       (delete)
+    if (/\/collections(\/[^/]+)?$/.test(pathname)) {
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+        return false;
+      }
+    }
+    // All other paths are forwarded
+    return true;
+  }
+
+  // R3.c: proxyReq body sanitize — strip embedding_function keys from forwarded body.
+  // express.json() is already mounted globally (index.ts:1202), so req.body is available.
+  // fixRequestBody re-serializes the (potentially modified) body onto the proxy request.
+  function restProxyReqHandler(
+    proxyReq: ClientRequest,
+    req: express.Request,
+    res: express.Response,
+  ): void {
+    // Run the base logging handler first
+    proxyReqHandler(proxyReq, req, res);
+
+    // Only inspect POST/PUT/PATCH bodies that may carry collection config
+    const method = (req.method || "GET").toUpperCase();
+    if (!["POST", "PUT", "PATCH"].includes(method)) {
+      fixRequestBody(proxyReq, req);
+      return;
+    }
+
+    const body = req.body as Record<string, unknown> | undefined;
+    if (!body || typeof body !== "object") {
+      fixRequestBody(proxyReq, req);
+      return;
+    }
+
+    // If the body contains embedding_function configuration, reject outright (400).
+    // This covers the CVE-2026-45829 trust_remote_code / model sink.
+    const config = body.configuration as Record<string, unknown> | undefined;
+    if (config && typeof config === "object" && config.embedding_function !== undefined) {
+      // Abort the proxy request and return 400 to the client
+      proxyReq.destroy();
+      if (!res.headersSent) {
+        res.status(400).json({
+          error: "invalid_request",
+          error_description:
+            "configuration.embedding_function is not permitted via the REST proxy (CVE-2026-45829 hardening).",
+        });
+      }
+      return;
+    }
+
+    // Re-stream the (unmodified or sanitized) body onto the proxy request
+    fixRequestBody(proxyReq, req);
+  }
+
+  // R3.c (Express middleware): body sanitize guard — reject bodies with
+  // configuration.embedding_function before forwarding to upstream.
+  // Runs as an Express middleware so it fires even when the proxy is mocked.
+  function restBodySanitizeMiddleware(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ): void {
+    const method = (req.method || "GET").toUpperCase();
+    if (!["POST", "PUT", "PATCH"].includes(method)) {
+      return next();
+    }
+    const body = req.body as Record<string, unknown> | undefined;
+    if (!body || typeof body !== "object") {
+      return next();
+    }
+    const config = body.configuration as Record<string, unknown> | undefined;
+    if (config && typeof config === "object" && config.embedding_function !== undefined) {
+      res.status(400).json({
+        error: "invalid_request",
+        error_description:
+          "configuration.embedding_function is not permitted via the REST proxy (CVE-2026-45829 hardening).",
+      });
+      return;
+    }
+    return next();
+  }
+
+  // R1 note: oidcAuthMiddleware already blocks /api/* paths from ALLOW_INSECURE_NO_AUTH
+  // (see middleware.ts isProxyPath check). This mount ordering makes that explicit.
+  app.use(
+    validateOriginHeader,           // R3.b: DNS-rebind defense (same as /mcp)
+    oidcAuthMiddleware,              // R1: always enforced for proxy — no ALLOW_INSECURE_NO_AUTH bypass
+    (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      // R3.a: pathFilter — block collection write + embedding-function paths
+      if (!restProxyPathFilter(req.path, req)) {
+        return res.status(403).json({
+          error: "forbidden",
+          error_description:
+            "This path is blocked by the REST proxy path filter (collection writes and embedding-function endpoints are not permitted).",
+        });
+      }
+      return next();
     },
-  }),
-);
+    restBodySanitizeMiddleware,      // R3.c: reject embedding_function in body before forwarding
+    createProxyMiddleware({
+      target: `http://${chromaConfig.host}:${chromaConfig.port}`,
+      changeOrigin: true,
+      on: {
+        proxyReq: restProxyReqHandler,   // fixRequestBody for the proxy stream
+        error: proxyErrorHandler,
+      },
+    }),
+  );
+}
 
 // Helper function to display config value with default indicator
 export function formatConfigValue(
@@ -1535,7 +1866,6 @@ export function getConfigStatus(): {
   requestTimeout: string;
   pingTimeout: string;
   logLevel: string;
-  allowQueryAuth: string;
   chromaTenant: string;
   chromaDatabase: string;
 } {
@@ -1555,7 +1885,6 @@ export function getConfigStatus(): {
       "s",
     ),
     logLevel: formatConfigValue(process.env.LOG_LEVEL, "info"),
-    allowQueryAuth: formatConfigValue(process.env.ALLOW_QUERY_AUTH, "true"),
     chromaTenant: formatConfigValue(process.env.CHROMA_TENANT, "default_tenant"),
     chromaDatabase: formatConfigValue(process.env.CHROMA_DATABASE, "default_database"),
   };
@@ -1578,7 +1907,7 @@ export async function main() {
     // Return server for graceful shutdown
     return app.listen(port, () => {
       console.log(`
-🚀 ChromaDB Remote MCP Server v1.0.2
+🚀 ChromaDB Remote MCP Server v${PACKAGE_VERSION}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📡 Endpoints
@@ -1593,7 +1922,7 @@ export async function main() {
 
 🔐 Security
    Auth Token:   ${MCP_AUTH_TOKEN ? "✅ Enabled" : "⚠️  DISABLED (not recommended for production)"}
-   Query Auth:   ${config.allowQueryAuth}
+   OAuth Proxy:  ${isOAuthProxyEnabled() ? "✅ Enabled (Google passthrough)" : "⚠️  Disabled"}
    Rate Limit:   ${config.rateLimit}
 
 ⚙️  Configuration

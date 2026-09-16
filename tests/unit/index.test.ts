@@ -8,7 +8,6 @@ import {
   cleanupRequest,
   Closeable,
   completeHandler,
-  createAuthMiddleware,
   createCloseHandler,
   createServer,
   generateRequestId,
@@ -18,6 +17,7 @@ import {
   getPingTimeout,
   getPromptHandler,
   healthHandler,
+  healthDetailHandler,
   initChromaClient,
   listPromptsHandler,
   listResourcesHandler,
@@ -39,6 +39,8 @@ import {
   shouldLog,
   shouldSkipRateLimit,
   validateOriginHeader,
+  corsMiddleware,
+  getCorsAllowedOrigins,
   validateRateLimitMax,
   waitForChroma,
 } from "../../src";
@@ -642,267 +644,7 @@ describe("index.ts", () => {
     });
   });
 
-  describe("createAuthMiddleware", () => {
-    let req: Partial<Request>;
-    let res: Partial<ExpressResponse>;
-    let next: NextFunction;
-
-    beforeEach(() => {
-      req = {
-        headers: {},
-        query: {},
-        path: "/mcp",
-      };
-      res = {
-        status: jest.fn(() => res as ExpressResponse),
-        json: jest.fn(),
-        setHeader: jest.fn(),
-      } as Partial<ExpressResponse>;
-      next = jest.fn() as NextFunction;
-    });
-
-    it("calls next() when no auth token is provided", () => {
-      const authenticate = createAuthMiddleware(undefined);
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(next).toHaveBeenCalled();
-    });
-
-    it("returns 401 when no token provided in request", () => {
-      const authenticate = createAuthMiddleware("test-token");
-      res.setHeader = jest.fn() as unknown as undefined;
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.setHeader).toHaveBeenCalledWith(
-        "WWW-Authenticate",
-        'Bearer realm="MCP Server", charset="UTF-8"',
-      );
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining("Unauthorized"),
-        }),
-      );
-    });
-
-    it("accepts valid Bearer token", () => {
-      const token = "valid-token";
-      const authenticate = createAuthMiddleware(token);
-
-      req.headers = { authorization: `Bearer ${token}` };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(next).toHaveBeenCalled();
-    });
-
-    it("accepts valid X-Chroma-Token header", () => {
-      const token = "valid-token";
-      const authenticate = createAuthMiddleware(token);
-
-      req.headers = { "x-chroma-token": token };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(next).toHaveBeenCalled();
-    });
-
-    it("rejects apiKey query parameter by default (ALLOW_QUERY_AUTH not set)", () => {
-      const token = "valid-token";
-      const authenticate = createAuthMiddleware(token);
-      const originalEnv = process.env.ALLOW_QUERY_AUTH;
-      delete process.env.ALLOW_QUERY_AUTH;
-
-      req.query = { apiKey: token };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      // Query auth should be rejected when ALLOW_QUERY_AUTH is not set
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(next).not.toHaveBeenCalled();
-
-      process.env.ALLOW_QUERY_AUTH = originalEnv;
-    });
-
-    it("accepts valid token query parameter when ALLOW_QUERY_AUTH=true", () => {
-      const token = "valid-token";
-      const authenticate = createAuthMiddleware(token);
-      const originalEnv = process.env.ALLOW_QUERY_AUTH;
-      process.env.ALLOW_QUERY_AUTH = "true";
-
-      req.query = { token };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(next).toHaveBeenCalled();
-
-      process.env.ALLOW_QUERY_AUTH = originalEnv;
-    });
-
-    it("accepts valid api_key query parameter when ALLOW_QUERY_AUTH=true", () => {
-      const token = "valid-token";
-      const authenticate = createAuthMiddleware(token);
-      const originalEnv = process.env.ALLOW_QUERY_AUTH;
-      process.env.ALLOW_QUERY_AUTH = "true";
-
-      req.query = { api_key: token };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(next).toHaveBeenCalled();
-
-      process.env.ALLOW_QUERY_AUTH = originalEnv;
-    });
-
-    it("rejects query parameter auth when ALLOW_QUERY_AUTH=false", () => {
-      const token = "valid-token";
-      const authenticate = createAuthMiddleware(token);
-      const originalEnv = process.env.ALLOW_QUERY_AUTH;
-      process.env.ALLOW_QUERY_AUTH = "false";
-      res.setHeader = jest.fn() as unknown as undefined;
-
-      req.query = { apiKey: token };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.setHeader).toHaveBeenCalledWith(
-        "WWW-Authenticate",
-        'Bearer realm="MCP Server", charset="UTF-8"',
-      );
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining("Missing authentication"),
-        }),
-      );
-
-      process.env.ALLOW_QUERY_AUTH = originalEnv;
-    });
-
-    it("shows deprecation warning when using query auth", () => {
-      const token = "valid-token";
-      const authenticate = createAuthMiddleware(token);
-      const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {
-        // Empty to suppress console output during tests
-      });
-      const originalEnv = process.env.ALLOW_QUERY_AUTH;
-      process.env.ALLOW_QUERY_AUTH = "true";
-
-      req.query = { apiKey: token };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Query parameter authentication is DEPRECATED"),
-      );
-
-      process.env.ALLOW_QUERY_AUTH = originalEnv;
-      consoleWarnSpy.mockRestore();
-    });
-
-    it("rejects invalid token", () => {
-      const authenticate = createAuthMiddleware("expected-token");
-      res.setHeader = jest.fn() as unknown as undefined;
-
-      req.headers = { authorization: "Bearer wrong-token" };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.setHeader).toHaveBeenCalledWith(
-        "WWW-Authenticate",
-        'Bearer realm="MCP Server", error="invalid_token", charset="UTF-8"',
-      );
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining("Invalid token"),
-        }),
-      );
-    });
-
-    it("rejects token with same length but different content", () => {
-      const authenticate = createAuthMiddleware("expected-token-1");
-
-      req.headers = { authorization: "Bearer expected-token-2" };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining("Invalid token"),
-        }),
-      );
-    });
-
-    it("rejects token with different length", () => {
-      const authenticate = createAuthMiddleware("short");
-
-      req.headers = { authorization: "Bearer very-long-token-here" };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(res.status).toHaveBeenCalledWith(401);
-    });
-
-    it("handles comparison error", () => {
-      const authenticate = createAuthMiddleware("test-token");
-
-      req.headers = { authorization: "Bearer \u0000invalid" };
-
-      authenticate(req as Request, res as ExpressResponse, next);
-
-      expect(res.status).toHaveBeenCalled();
-    });
-
-    it("handles crypto comparison error", () => {
-      const authenticate = createAuthMiddleware("test-token-1");
-
-      let callCount = 0;
-      const errorRes = {
-        status: jest.fn((_code: number) => {
-          callCount++;
-          if (callCount === 1) {
-            throw new Error("Mock error during status call");
-          }
-          return errorRes as ExpressResponse;
-        }),
-        json: jest.fn(),
-        setHeader: jest.fn(),
-      } as unknown as ExpressResponse;
-
-      req.headers = { authorization: "Bearer test-token-2" };
-
-      expect(() => {
-        authenticate(req as Request, errorRes, next);
-      }).not.toThrow();
-
-      expect(errorRes.status).toHaveBeenCalledTimes(2);
-      expect(errorRes.json).toHaveBeenCalledWith({ error: "Unauthorized: Invalid token" });
-    });
-  });
-
-  describe("MCP_AUTH_TOKEN export", () => {
-    it("should export MCP_AUTH_TOKEN", async () => {
-      process.env.MCP_AUTH_TOKEN = "test-token-123";
-      jest.resetModules();
-      const module = await import("../../src/index.js");
-
-      expect(module.MCP_AUTH_TOKEN).toBe("test-token-123");
-    });
-
-    it("should export undefined when not set", async () => {
-      delete process.env.MCP_AUTH_TOKEN;
-      jest.resetModules();
-      const module = await import("../../src/index.js");
-
-      expect(module.MCP_AUTH_TOKEN).toBeUndefined();
-    });
-  });
-
-  describe("healthHandler", () => {
+  describe("healthHandler (R6.b: minimal unauthenticated response)", () => {
     let req: Partial<Request>;
     let res: Partial<ExpressResponse>;
 
@@ -918,11 +660,62 @@ describe("index.ts", () => {
       resetChromaClient();
     });
 
-    it("should return 200 when ChromaDB is connected", async () => {
+    it("should return {status:'ok'} ONLY when ChromaDB is connected (R6.b: minimal body)", async () => {
       initChromaClient();
       jest.spyOn(getChromaClient(), "heartbeat").mockResolvedValue(123);
 
       await healthHandler(req as Request, res as ExpressResponse);
+
+      expect(res.json).toHaveBeenCalledWith({ status: "ok" });
+      // R6.b: must NOT expose chroma host:port or service name in unauthenticated response
+      const call = (res.json as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+      expect(Object.keys(call).sort()).toEqual(["status"]);
+    });
+
+    it("should return {status:'error'} ONLY when ChromaDB is disconnected (R6.b: minimal body)", async () => {
+      initChromaClient();
+      jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue(new Error("Connection failed"));
+
+      await healthHandler(req as Request, res as ExpressResponse);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({ status: "error" });
+      const call = (res.json as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+      expect(Object.keys(call).sort()).toEqual(["status"]);
+    });
+
+    it("should return {status:'error'} ONLY on unknown error (R6.b: minimal body, no error leak)", async () => {
+      initChromaClient();
+      jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue("string error");
+
+      await healthHandler(req as Request, res as ExpressResponse);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({ status: "error" });
+    });
+  });
+
+  describe("healthDetailHandler (R6.b: authenticated detailed response)", () => {
+    let req: Partial<Request>;
+    let res: Partial<ExpressResponse>;
+
+    beforeEach(() => {
+      req = {};
+      res = {
+        status: jest.fn(() => res as ExpressResponse),
+        json: jest.fn(),
+      } as Partial<ExpressResponse>;
+    });
+
+    afterEach(() => {
+      resetChromaClient();
+    });
+
+    it("should return detailed status with chroma host:port when ChromaDB is connected", async () => {
+      initChromaClient();
+      jest.spyOn(getChromaClient(), "heartbeat").mockResolvedValue(123);
+
+      await healthDetailHandler(req as Request, res as ExpressResponse);
 
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -932,11 +725,11 @@ describe("index.ts", () => {
       );
     });
 
-    it("should return 503 when ChromaDB is disconnected", async () => {
+    it("should return detailed error info when ChromaDB is disconnected", async () => {
       initChromaClient();
       jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue(new Error("Connection failed"));
 
-      await healthHandler(req as Request, res as ExpressResponse);
+      await healthDetailHandler(req as Request, res as ExpressResponse);
 
       expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(
@@ -948,11 +741,11 @@ describe("index.ts", () => {
       );
     });
 
-    it("should handle unknown error", async () => {
+    it("should handle unknown error in detail handler", async () => {
       initChromaClient();
       jest.spyOn(getChromaClient(), "heartbeat").mockRejectedValue("string error");
 
-      await healthHandler(req as Request, res as ExpressResponse);
+      await healthDetailHandler(req as Request, res as ExpressResponse);
 
       expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(
@@ -1186,103 +979,79 @@ describe("index.ts", () => {
       jest.useRealTimers();
     });
 
-    it("should display authentication disabled message when no token", async () => {
+    it("E2: banner shows OAuth Proxy ✅ Enabled when OAUTH_PROXY_ENABLED=true", async () => {
       const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
       mockFetch.mockResolvedValue({ ok: true, status: 200 } as Response);
 
       jest.useFakeTimers();
-
-      // Clear MCP_AUTH_TOKEN to test disabled auth
-      const originalToken = process.env.MCP_AUTH_TOKEN;
-      delete process.env.MCP_AUTH_TOKEN;
+      process.env.OAUTH_PROXY_ENABLED = "true";
+      process.env.GOOGLE_OAUTH_CLIENT_ID = "test-client";
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET = "test-secret";
       jest.resetModules();
       const module = await import("../../src/index.js");
 
-      // Verify token is actually undefined
-      expect(module.MCP_AUTH_TOKEN).toBeUndefined();
-
-      const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {
-        // Empty to suppress console output during tests
-      });
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
       const listenSpy = jest
         .spyOn(module.app, "listen")
-        .mockImplementation((port: number, callback?: (error?: Error) => void) => {
+        .mockImplementation((_port: number, callback?: (error?: Error) => void) => {
           if (callback) callback();
           return {} as never;
         });
 
       const mainPromise = module.main();
-
-      // Advance timers for waitForChroma
       jest.advanceTimersByTime(10000);
       await Promise.resolve();
-
       await mainPromise;
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("⚠️  DISABLED (not recommended for production)"),
+        expect.stringContaining("OAuth Proxy:"),
       );
-      expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining("✅ Enabled"));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Enabled (Google passthrough)"),
+      );
 
       consoleSpy.mockRestore();
       listenSpy.mockRestore();
       jest.useRealTimers();
-
-      // Restore original token
-      if (originalToken) {
-        process.env.MCP_AUTH_TOKEN = originalToken;
-      }
+      delete process.env.OAUTH_PROXY_ENABLED;
+      delete process.env.GOOGLE_OAUTH_CLIENT_ID;
+      delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
     });
 
-    it("should display authentication enabled message when token is set", async () => {
+    it("E2: banner shows OAuth Proxy ⚠️ Disabled when OAUTH_PROXY_ENABLED unset", async () => {
       const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
       mockFetch.mockResolvedValue({ ok: true, status: 200 } as Response);
 
       jest.useFakeTimers();
-
-      // Set MCP_AUTH_TOKEN to test enabled auth
-      const originalToken = process.env.MCP_AUTH_TOKEN;
-      process.env.MCP_AUTH_TOKEN = "test-token-12345";
+      delete process.env.OAUTH_PROXY_ENABLED;
       jest.resetModules();
       const module = await import("../../src/index.js");
 
-      // Verify token is actually set
-      expect(module.MCP_AUTH_TOKEN).toBe("test-token-12345");
-
-      const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {
-        // Empty to suppress console output during tests
-      });
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
       const listenSpy = jest
         .spyOn(module.app, "listen")
-        .mockImplementation((port: number, callback?: (error?: Error) => void) => {
+        .mockImplementation((_port: number, callback?: (error?: Error) => void) => {
           if (callback) callback();
           return {} as never;
         });
 
       const mainPromise = module.main();
-
-      // Advance timers for waitForChroma
       jest.advanceTimersByTime(10000);
       await Promise.resolve();
-
       await mainPromise;
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("✅ Enabled"),
+        expect.stringContaining("OAuth Proxy:"),
       );
-      expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining("DISABLED"));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Disabled"),
+      );
 
       consoleSpy.mockRestore();
       listenSpy.mockRestore();
       jest.useRealTimers();
-
-      // Restore original token
-      if (originalToken) {
-        process.env.MCP_AUTH_TOKEN = originalToken;
-      } else {
-        delete process.env.MCP_AUTH_TOKEN;
-      }
     });
+
   });
 
   describe("Signal handlers", () => {
@@ -2708,6 +2477,133 @@ describe("index.ts", () => {
         cleanupRequest(id1);
         cleanupRequest(id2);
       });
+    });
+  });
+
+  describe("R3: startup warning (EMBEDDING_PROVIDER unset)", () => {
+    let originalEnv: NodeJS.ProcessEnv;
+
+    beforeEach(() => {
+      originalEnv = { ...process.env };
+      delete process.env.EMBEDDING_PROVIDER;
+      delete process.env.EMBEDDING_MODEL;
+      delete process.env.EMBEDDING_DIMENSIONS;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it("emits 'all-MiniLM-L6-v2, English-only' warning when EMBEDDING_PROVIDER is unset", async () => {
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+      const { resolveEmbeddingProviderConfig } = await import("../../src/embedding-config.js");
+      resolveEmbeddingProviderConfig();
+      const warnMessages = warnSpy.mock.calls.map((args) => String(args[0])).join("\n");
+      expect(warnMessages).toContain("all-MiniLM-L6-v2, English-only");
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe("corsMiddleware (v2.2.2 — browser OAuth/MCP support)", () => {
+    let req: Partial<Request>;
+    let res: Partial<ExpressResponse>;
+    let next: NextFunction;
+    let setHeaderSpy: jest.Mock;
+    let statusSpy: jest.Mock;
+    let endSpy: jest.Mock;
+
+    beforeEach(() => {
+      delete process.env.ALLOWED_ORIGINS;
+      setHeaderSpy = jest.fn() as jest.Mock;
+      statusSpy = jest.fn(() => res as ExpressResponse) as jest.Mock;
+      endSpy = jest.fn() as jest.Mock;
+      req = { headers: {}, method: "POST", path: "/oauth/token" };
+      res = {
+        setHeader: setHeaderSpy,
+        status: statusSpy,
+        end: endSpy,
+      } as Partial<ExpressResponse>;
+      next = jest.fn() as NextFunction;
+    });
+
+    it("getCorsAllowedOrigins includes claude.ai, anthropic, dash.cloudflare.com by default", () => {
+      const allowed = getCorsAllowedOrigins();
+      expect(allowed).toContain("https://claude.ai");
+      expect(allowed).toContain("https://api.anthropic.com");
+      expect(allowed).toContain("https://dash.cloudflare.com");
+    });
+
+    it("getCorsAllowedOrigins merges ALLOWED_ORIGINS env (idempotent)", () => {
+      process.env.ALLOWED_ORIGINS = "https://custom.example.com,https://claude.ai";
+      const allowed = getCorsAllowedOrigins();
+      expect(allowed).toContain("https://custom.example.com");
+      // claude.ai not duplicated
+      expect(allowed.filter((o) => o === "https://claude.ai").length).toBe(1);
+    });
+
+    it("sets Access-Control-Allow-Origin for allowed origin (claude.ai)", () => {
+      req.headers = { origin: "https://claude.ai" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith("Access-Control-Allow-Origin", "https://claude.ai");
+      expect(setHeaderSpy).toHaveBeenCalledWith("Vary", "Origin");
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("sets CORS headers for dash.cloudflare.com", () => {
+      req.headers = { origin: "https://dash.cloudflare.com" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith(
+        "Access-Control-Allow-Origin",
+        "https://dash.cloudflare.com",
+      );
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("short-circuits OPTIONS preflight with 204 (no body)", () => {
+      req.method = "OPTIONS";
+      req.headers = { origin: "https://claude.ai" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(statusSpy).toHaveBeenCalledWith(204);
+      expect(endSpy).toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("does NOT set ACAO for unknown origin (browser blocks downstream)", () => {
+      req.headers = { origin: "https://evil.example.com" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      const acaoCall = setHeaderSpy.mock.calls.find((c) => c[0] === "Access-Control-Allow-Origin");
+      expect(acaoCall).toBeUndefined();
+      // Still calls next() — actual blocking happens in validateOriginHeader downstream.
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("allows localhost (any port) for development", () => {
+      req.headers = { origin: "http://localhost:5173" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith(
+        "Access-Control-Allow-Origin",
+        "http://localhost:5173",
+      );
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("ALLOWED_ORIGINS env extends the allowlist", () => {
+      process.env.ALLOWED_ORIGINS = "https://my-app.example.com";
+      req.headers = { origin: "https://my-app.example.com" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      expect(setHeaderSpy).toHaveBeenCalledWith(
+        "Access-Control-Allow-Origin",
+        "https://my-app.example.com",
+      );
+    });
+
+    it("does NOT set Access-Control-Allow-Credentials (we use Bearer tokens)", () => {
+      req.headers = { origin: "https://claude.ai" };
+      corsMiddleware(req as Request, res as ExpressResponse, next);
+      const credCall = setHeaderSpy.mock.calls.find(
+        (c) => c[0] === "Access-Control-Allow-Credentials",
+      );
+      expect(credCall).toBeUndefined();
     });
   });
 });

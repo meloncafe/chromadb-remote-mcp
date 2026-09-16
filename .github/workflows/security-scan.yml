@@ -2,7 +2,7 @@ name: Security Scan
 
 on:
   pull_request:
-    branches: [ develop, release ]
+    branches: [ main, release ]
   schedule:
     # Run security scan weekly on Mondays at 00:00 UTC
     - cron: "0 0 * * 1"
@@ -15,16 +15,18 @@ permissions:
 jobs:
   dependency-audit:
     name: Dependency Audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: "24.13.0"
-          cache: "yarn"
+          node-version: "24.21.0"
+
+      - name: Enable Corepack (yarn)
+        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -49,7 +51,7 @@ jobs:
 
   codeql-analysis:
     name: CodeQL Analysis
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     permissions:
       actions: read
       contents: read
@@ -62,7 +64,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -81,10 +83,10 @@ jobs:
 
   secret-scan:
     name: Secret Scanning
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -95,16 +97,18 @@ jobs:
 
   typescript-check:
     name: TypeScript Type Check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hetzner-x64]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: "24.13.0"
-          cache: "yarn"
+          node-version: "24.21.0"
+
+      - name: Enable Corepack (yarn)
+        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile

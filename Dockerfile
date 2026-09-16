@@ -1,4 +1,4 @@
-FROM node:24.13.0-slim AS builder
+FROM node:24.21.0-slim AS builder
 
 WORKDIR /app
 
@@ -6,8 +6,8 @@ WORKDIR /app
 RUN corepack enable
 
 # Install dependencies
-COPY package.json yarn.lock* ./
-RUN yarn install --frozen-lockfile --ignore-scripts
+COPY package.json yarn.lock .yarnrc.yml* ./
+RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
 # Copy source code
 COPY tsconfig.json ./
@@ -17,7 +17,7 @@ COPY src ./src
 RUN yarn build
 
 # Production stage
-FROM node:24.13.0-slim
+FROM node:24.21.0-slim
 
 # MCP Register Label
 LABEL io.modelcontextprotocol.server.name="io.github.meloncafe/chromadb-remote-mcp"
@@ -32,8 +32,8 @@ WORKDIR /app
 RUN corepack enable
 
 # Copy package files and install production dependencies only
-COPY package.json yarn.lock* ./
-RUN yarn install --frozen-lockfile --production --ignore-scripts \
+COPY package.json yarn.lock .yarnrc.yml* ./
+RUN YARN_ENABLE_SCRIPTS=false yarn workspaces focus --production \
     && yarn cache clean
 
 # Copy built files from builder

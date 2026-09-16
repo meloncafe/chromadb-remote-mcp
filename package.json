@@ -1,8 +1,9 @@
 {
   "name": "chroma-remote-mcp",
-  "version": "1.0.2",
+  "version": "3.0.0",
   "description": "ChromaDB Remote MCP Server with Streamable HTTP Transport",
   "type": "module",
+  "packageManager": "yarn@4.18.0",
   "main": "build/index.js",
   "mcpName": "io.github.meloncafe/chromadb-remote-mcp",
   "private": true,
@@ -44,31 +45,52 @@
   "homepage": "https://github.com/meloncafe/chromadb-remote-mcp#readme",
   "dependencies": {
     "@chroma-core/default-embed": "^0.1.9",
-    "@modelcontextprotocol/sdk": "^1.25.2",
-    "chromadb": "^3.2.2",
-    "dotenv": "^17.2.3",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "chromadb": "^3.5.0",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.2.1",
-    "http-proxy-middleware": "^3.0.5"
+    "express-rate-limit": "^8.7.0",
+    "http-proxy-middleware": "^4.2.0",
+    "jose": "^6.2.12"
+  },
+  "resolutions": {
+    "ip-address": "^10.7.2"
   },
   "devDependencies": {
-    "@jest/globals": "^30.2.0",
+    "@jest/globals": "^30.5.1",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.10.9",
-    "@typescript-eslint/eslint-plugin": "^8.53.0",
-    "@typescript-eslint/parser": "^8.53.0",
-    "eslint": "^9.39.2",
-    "jest": "^30.2.0",
-    "jest-junit": "^16.0.0",
-    "prettier": "^3.8.0",
-    "ts-jest": "^29.4.6",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^22.20.3",
+    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "@typescript/typescript6": "^6.0.2",
+    "eslint": "^10.10.0",
+    "jest": "^30.5.1",
+    "jest-junit": "^17.0.0",
+    "prettier": "^3.9.6",
+    "ts-jest": "^29.4.12",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=24.13.0",
-    "yarn": ">=4.12.0"
+    "node": ">=26.8.2",
+    "yarn": ">=4.18.0"
   },
-  "packageManager": "yarn@4.12.0"
+  "dependenciesMeta": {
+    "esbuild": {
+      "built": true
+    },
+    "onnxruntime-node": {
+      "built": true
+    },
+    "protobufjs": {
+      "built": true
+    },
+    "sharp": {
+      "built": true
+    },
+    "unrs-resolver": {
+      "built": true
+    }
+  }
 }
