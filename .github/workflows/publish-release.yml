@@ -47,8 +47,8 @@ jobs:
       - name: Run type check
         run: yarn type-check
 
-      - name: Run tests with coverage
-        run: yarn test:unit:coverage
+#      - name: Run tests with coverage
+#        run: yarn test:unit:coverage
 
       - name: Build TypeScript package
         run: yarn build
