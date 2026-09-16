@@ -49,6 +49,19 @@ export async function rerank(
     return { indices: [], reranked: false };
   }
 
+  const documents = candidates.map((c) => c.document ?? "");
+
+  // Rerankers score (query, document) pairs. If the candidates were fetched
+  // without document text every entry collapses to "", which providers such as
+  // Voyage reject with HTTP 400 — the request is spent and fail-soft returns the
+  // original ordering anyway. Bail out early with a warning that names the fix.
+  if (documents.every((d) => d.trim().length === 0)) {
+    console.warn(
+      "Rerank candidates carry no document text — add \"documents\" to the query's `include` — returning original order.",
+    );
+    return identityRanking(candidates, topK);
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -57,7 +70,7 @@ export async function rerank(
   const body = {
     model,
     query,
-    documents: candidates.map((c) => c.document ?? ""),
+    documents,
     top_k: topK,
   };
 
@@ -72,8 +85,13 @@ export async function rerank(
       signal: controller.signal,
     });
     if (!response.ok) {
+      // The status code alone does not say which field the provider rejected,
+      // and fail-soft hides the failure from the caller, so the body is the only
+      // diagnostic that ever reaches an operator.
+      const detail = await response.text().catch(() => "");
       console.warn(
-        `Reranker HTTP ${response.status} — returning original order.`,
+        `Reranker HTTP ${response.status} — returning original order.` +
+          (detail ? ` Response: ${detail.slice(0, 500)}` : ""),
       );
       return identityRanking(candidates, topK);
     }
