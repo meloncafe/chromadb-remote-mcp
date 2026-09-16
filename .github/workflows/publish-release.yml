@@ -39,7 +39,7 @@ jobs:
           node-version: "26.8.2"
 
       - name: Enable Corepack (yarn)
-        run: corepack enable
+        run: npm i -g --force corepack && corepack enable
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
