@@ -47,7 +47,7 @@
     "@chroma-core/default-embed": "^0.1.9",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "chromadb": "^3.5.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "http-proxy-middleware": "^4.2.0",
