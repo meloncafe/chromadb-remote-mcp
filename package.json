@@ -54,7 +54,7 @@
     "jose": "^6.2.12"
   },
   "resolutions": {
-    "ip-address": "^10.7.2"
+    "ip-address": "^10.7.3"
   },
   "devDependencies": {
     "@jest/globals": "^30.5.2",
@@ -73,8 +73,8 @@
     "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=26.9.0",
-    "yarn": ">=4.18.0"
+    "node": ">=26.11.1",
+    "yarn": ">=4.18.1"
   },
   "dependenciesMeta": {
     "esbuild": {
