@@ -530,6 +530,71 @@ Visit `https://your-server.com/docs` for Swagger UI documentation of all ChromaD
 
 ## Deployment
 
+### Deploying with deploy.sh
+
+`deploy.sh` wraps the Docker Compose lifecycle of this repository's `docker-compose.yml` in one script. It is host independent: everything host specific lives in `.env` (see `.env.example`) and optional extra compose files, never in the script.
+
+| Command | What it does |
+|---|---|
+| `./deploy.sh install` | First-time setup. Creates `.env` from `.env.example` when missing and stops so you can edit it; otherwise pulls images and starts services |
+| `./deploy.sh update` | Pulls images, recreates containers (`up -d --force-recreate`), prunes dangling images, syncs `CHROMA_SERVER_VERSION` in `.env`, then prints the version information reusing that single judgment |
+| `./deploy.sh start` | Starts services (`up -d`) |
+| `./deploy.sh stop` | Stops and removes the containers (`down`); data is kept |
+| `./deploy.sh restart` | Restarts the containers. Does not re-read `.env` — use `update` or `start` after changing it |
+| `./deploy.sh status` | `docker compose ps` plus the state of the chromadb / chroma-mcp-server / caddy-proxy containers |
+| `./deploy.sh logs [service]` | Follows logs (`--tail=100`), e.g. `./deploy.sh logs mcp-server` |
+| `./deploy.sh version` | Shows the mcp image and running-container versions and the pinned chroma image, resolves the Chroma server version from the running image digest, and records it in `.env` |
+| `./deploy.sh backup` | Archives the chroma data to `backups/chromadb_data_<timestamp>.tar.gz` (see below) |
+
+`./deploy.sh help` prints the usage.
+
+**Settings** — read from the host's `.env` (a process environment variable of the same name takes precedence):
+
+| Key | Meaning | Default |
+|---|---|---|
+| `COMPOSE_FILE` | Compose files merged in order, separated by `:` | `docker-compose.yml` |
+| `COMPOSE_PATH_SEPARATOR` | Separator for the `COMPOSE_FILE` list | `:` |
+| `COMPOSE_PROJECT_NAME` | Compose project name; it prefixes the network and the named volume (`<project>_chroma-data`). Changing it after the first start gives a named-volume stack a new, empty volume — a bind path keeps its data | deploy directory name |
+| `CHROMA_DATA_PATH` | Chroma data: the compose named volume `chroma-data`, or an absolute / `./relative` bind path | `chroma-data` (named volume) |
+| `PORT` | Host port published by caddy | `8080` |
+| `MCP_IMAGE_TAG` | Tag of the `devsaurus/chromadb-remote-mcp` image | `latest` |
+| `DEPLOY_LANG` | Message language of `deploy.sh`: `en` or `ko` | from the locale |
+
+`DRY_RUN=1`, `DEPLOY_DIR=<dir>` (target directory, for tests) and `CHROMA_IMAGE=<ref>` (image for the `backup` tar when no chromadb container exists) are read from the process environment.
+
+**One stack per host** — `docker-compose.yml` fixes `container_name` (`chromadb`, `chroma-mcp-server`, `caddy-proxy`), so changing only `COMPOSE_PROJECT_NAME` does not let a second stack run on the same host: the container names collide.
+
+**Compose file selection** — `COMPOSE_FILE` is a list merged in order (later files override earlier ones), exactly like `docker compose`. Relative entries resolve against the deploy directory, absolute entries are used unchanged. `deploy.sh` passes `--project-directory` on every call, so `.env` and relative paths always refer to the deploy directory.
+
+**`DRY_RUN=1`** — prints every docker command prefixed `[DRY-RUN]`, calls no docker and changes no file; it works even without docker installed. `install` prints its plan without copying `.env` or creating `backups/`; `version` / `update` skip the digest judgment, the `.env` write and the mcp-server recreation. A missing `.env` is downgraded to a warning: the plan is printed from the committed `.env.example` / compose defaults and no file is created. Without `DRY_RUN`, a missing `.env` is still an error.
+
+```bash
+DRY_RUN=1 ./deploy.sh update
+```
+
+**Output language** — help and log messages are English or Korean. The language is `DEPLOY_LANG` (environment, then `.env`); if unset, the first non-empty of `LC_ALL`, `LC_MESSAGES`, `LANG`: a value starting with `ko` selects Korean, anything else English.
+
+**`CHROMA_SERVER_VERSION` handling** — the Chroma server reports a hardcoded `1.0.0`, so `update` / `version` compare the RepoDigest of the chromadb container's image with the digest pinned in the compose file and then with the Docker Hub digest of the pinned tag, and record the result in `.env`. When the value changed, mcp-server alone is recreated with `up -d`. If the version cannot be determined (including a match on the Docker Hub `latest` tag alone), an existing `.env` value is preserved with a warning; `unknown` is written only when no value exists yet.
+
+**Backup** — `./deploy.sh backup` reads the data through a throwaway container with a read-only mount, so root-owned bind directories and named volumes both work. The data location is detected automatically: the existing chromadb container's `/data` mount first, otherwise `CHROMA_DATA_PATH` from `.env` (an absolute, `./` or `../` path is a bind mount; a bare name — the default `chroma-data` — is the compose named volume `<project>_<name>`). The archive is written as `.tar.gz.partial` and renamed on success (removed on failure). chromadb is stopped for a consistent snapshot and started again only if it was running before the backup. If the backup receives `SIGINT` or `SIGTERM` (for example Ctrl+C), it removes the `.tar.gz.partial` file, starts chromadb again when it was running before the backup, and exits with code 130 (`SIGINT`) or 143 (`SIGTERM`).
+
+**Behind a Traefik reverse proxy** — [`docker-compose.traefik.example.yml`](docker-compose.traefik.example.yml) is an optional example override with placeholder variables. Copy it, keep the copy on the server, and select it through the compose file list in `.env`:
+
+```bash
+cp docker-compose.traefik.example.yml docker-compose.traefik.yml
+
+# .env
+COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml
+TRAEFIK_HOST=mcp.example.com
+TRAEFIK_CERT_RESOLVER=your-resolver
+
+./deploy.sh update
+```
+
+`TRAEFIK_HOST` and `TRAEFIK_CERT_RESOLVER` are required. Optional: `TRAEFIK_NETWORK` (external network Traefik is attached to, which must already exist; default `traefik`), `TRAEFIK_ENTRYPOINT` (default `websecure`), `TRAEFIK_MIDDLEWARES` (comma-separated; see the note below) and `TRAEFIK_ROUTER_NAME` (default `chromadb-mcp`). Traefik router and service names are global, so pick a `TRAEFIK_ROUTER_NAME` that no other container on that Traefik already uses. The example removes the base file's host port mapping with `!reset`, which requires Docker Compose 2.24 or newer.
+
+The `middlewares` label in `docker-compose.traefik.example.yml` is commented out by default, so no middleware is attached. Once you uncomment the label, `TRAEFIK_MIDDLEWARES` becomes required: not only an unset variable but also an empty value (`TRAEFIK_MIDDLEWARES=`) aborts with `required variable TRAEFIK_MIDDLEWARES is missing a value`. To run without middlewares, keep the label commented out.
+
 ### Option 1: Tailscale VPN (Recommended)
 
 **Secure access within your Tailscale network:**

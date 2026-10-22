@@ -122,13 +122,13 @@ describe("Phase 10: GET /.well-known/oauth-protected-resource (R29, R38)", () =>
     });
 
     it("R5 (a): OAUTH_PROXY_BASE_URL set + no headers → returns env value (trailing slash stripped)", () => {
-      process.env.OAUTH_PROXY_BASE_URL = "https://c-db.devsaurus.io/";
+      process.env.OAUTH_PROXY_BASE_URL = "https://mcp.example.com/";
       const req = {
         headers: {},
         secure: false,
       } as unknown as import("express").Request;
       const result = resolveResourceBaseUrl(req);
-      expect(result).toBe("https://c-db.devsaurus.io");
+      expect(result).toBe("https://mcp.example.com");
     });
 
     it("R5 (b): OAUTH_PROXY_BASE_URL unset + X-Forwarded-Proto=https → resource starts with https://", () => {

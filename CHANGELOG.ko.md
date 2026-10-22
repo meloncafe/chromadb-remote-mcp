@@ -9,6 +9,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`deploy.sh` — 호스트 독립 Docker Compose 배포 도우미** — 명령 9종: `install` (최초 설정: `.env` 가 없으면 `.env.example` 에서 만들고 편집하도록 중단, 있으면 이미지 pull 후 기동), `update` (pull + `up -d --force-recreate` + dangling 이미지 prune + `CHROMA_SERVER_VERSION` 동기화 후, 그 단일 판정을 재사용해 버전 정보 출력), `start`, `stop` (`docker compose down`, 데이터는 유지), `restart` (`.env` 를 다시 읽지 않음 — `.env` 를 바꾼 뒤에는 `update`/`start` 사용), `status`, `logs [서비스]`, `version`, `backup`; `help` 는 사용법을 출력한다. 호스트별 값은 모두 `.env` 와 선택적 추가 compose 파일에 두며 스크립트에는 넣지 않는다.
+- **`deploy.sh` compose 파일 선택** — `COMPOSE_FILE`(프로세스 환경 → `.env`)은 콜론으로 구분한 목록이며 `docker compose` 와 동일하게 순서대로 병합된다(뒤 파일이 앞 파일을 덮어씀). 구분자는 `COMPOSE_PATH_SEPARATOR` 로 바꿀 수 있다. 상대경로는 배포 디렉터리 기준, 절대경로는 그대로 쓴다. 모든 compose 호출에 `--project-directory` 를 붙여 `.env` 와 상대경로가 항상 배포 디렉터리를 가리킨다. `.env` 의 `COMPOSE_PROJECT_NAME` 이 compose 프로젝트명을 정한다.
+- **`deploy.sh` `CHROMA_SERVER_VERSION` 자동 판정** — `version` / `update` 가 chromadb 컨테이너 이미지의 RepoDigest 를 (a) compose 에 핀한 digest, (b) 핀 태그의 Docker Hub digest 와 대조해 판정하고 그 결과를 `.env` 에 기록한다. 값이 바뀌면 mcp-server 만 `up -d` 로 재생성한다. 판정 불가 시 `.env` 의 기존 값은 보존하고(경고만) 기존 값이 없을 때만 `unknown` 을 기록한다. Docker Hub `latest` 태그에만 일치하는 경우는 판정 불가로 처리한다. chroma CLI 바이너리 버전과 서버가 하드코딩한 REST "1.0.0" 은 근거로 쓰지 않는다.
+- **`deploy.sh backup`** — 읽기 전용 마운트의 일회용 컨테이너로 chroma 데이터를 `backups/chromadb_data_<타임스탬프>.tar.gz` 로 묶으므로 root 소유 bind 디렉터리와 named volume 모두 동작한다. 데이터 위치는 자동 판정한다: 기존 chromadb 컨테이너의 `/data` 마운트(named volume 또는 bind 원본)를 우선하고, 없으면 `CHROMA_DATA_PATH`(절대경로·`./`·`../` = bind, 이름만(기본 `chroma-data`) = compose named volume `<프로젝트>_<이름>`)를 쓴다. 아카이브는 `.tar.gz.partial` 로 쓴 뒤 성공 시 이름을 바꾸고 실패 시 삭제하며, chromadb 는 백업 전에 실행 중이었던 경우에만 정지·재시작한다. 백업 중 `SIGINT`/`SIGTERM` 을 받으면 `.partial` 파일을 지우고 이 백업이 정지시켰던 chromadb 를 다시 기동한 뒤 관례적 종료 코드 130/143 으로 종료하며, 시그널 trap 은 백업이 끝나면 해제한다.
+- **`deploy.sh` `DRY_RUN=1`** — 모든 docker 명령을 `[DRY-RUN]` 접두어로 출력하고 docker 호출과 파일 변경을 하지 않는다(docker 미설치 환경에서도 가능): `install` 은 `.env` 복사나 `backups/` 생성 없이 계획만 출력하고, `version` / `update` 는 digest 판정·`.env` 기록·mcp-server 재생성을 생략한다. `.env` 가 없으면 오류 대신 경고로 낮추고 커밋된 `.env.example` / compose 기본값 기준으로 계획을 출력하며 파일은 만들지 않는다(`DRY_RUN` 이 아니면 `.env` 부재는 여전히 오류다).
+- **`deploy.sh` 영어/한국어 출력** — 도움말과 로그 메시지는 `DEPLOY_LANG`(`en` 또는 `ko`; 환경변수 → `.env`)을 따르고, 없으면 `LC_ALL`, `LC_MESSAGES`, `LANG` 중 처음 비어 있지 않은 값을 따른다: `ko*` 이면 한국어, 그 외는 영어.
+- **`docker-compose.traefik.example.yml`** — Traefik 리버스 프록시 뒤에 스택을 공개하는 선택 예제 override 로, 호스트 고유 값이 없다. `docker-compose.traefik.yml` 로 복사하고 `.env` 에 `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml` 과 필수 `TRAEFIK_HOST`, `TRAEFIK_CERT_RESOLVER` 를 설정(선택: `TRAEFIK_NETWORK` 기본 `traefik`, `TRAEFIK_ENTRYPOINT` 기본 `websecure`, `TRAEFIK_MIDDLEWARES` 는 `middlewares` 라벨 주석을 해제할 때만 읽음, `TRAEFIK_ROUTER_NAME` 기본 `chromadb-mcp`)한 뒤 `./deploy.sh update` 를 실행한다. `middlewares` 라벨은 기본적으로 주석 처리되어 있으며, 주석을 해제하면 `TRAEFIK_MIDDLEWARES` 가 필수가 된다 — 미설정과 빈 값(`TRAEFIK_MIDDLEWARES=`) 모두 `required variable TRAEFIK_MIDDLEWARES is missing a value` 오류로 중단되므로, 미들웨어 없이 쓰려면 라벨을 주석으로 둔다. 기본 파일의 호스트 포트 매핑을 `!reset` 으로 비우며(Docker Compose 2.24+ 필요) external Traefik 네트워크에 참여한다. Traefik 의 라우터·서비스 이름은 전역이므로 같은 Traefik 의 다른 컨테이너가 쓰지 않는 `TRAEFIK_ROUTER_NAME` 을 고른다.
+- **`.env.example`** — `COMPOSE_FILE`, `COMPOSE_PATH_SEPARATOR`, `COMPOSE_PROJECT_NAME`, `DEPLOY_LANG`, `MCP_IMAGE_TAG`, `TRAEFIK_*` override 변수(주석 예시), `OAUTH_PROXY_ALLOW_PRESHARED_CLIENT` 를 문서화했다.
+
+### Changed
+
+- **`docker-compose.yml` 의 mcp-server 이미지 태그가 `${MCP_IMAGE_TAG:-latest}` 로 변수화** — `devsaurus/chromadb-remote-mcp:${MCP_IMAGE_TAG:-latest}`; 미설정이면 기존과 같은 `latest` 이고, `.env` 에 지정하면 릴리스를 고정할 수 있다.
+
+### Fixed
+
+- **`docker-compose.yml` 이 `CHROMA_REST_PROXY_ENABLED`, `OAUTH_PROXY_REDIRECT_URI_ALLOWLIST` 를 mcp-server 컨테이너로 전달** — 기존에는 전달되지 않아 `.env` 에 v2.2.3 하드닝 설정이 있어도 적용되지 않았다. 미설정 시 소스 기본값(REST 프록시 OFF, DCR 비활성)이 적용되므로 기존 배포 동작은 그대로다.
+
 ## [3.0.16] - 2026-10-22
 
 ### Added

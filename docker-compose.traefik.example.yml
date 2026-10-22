@@ -1,0 +1,80 @@
+# Example override: publish chromadb-remote-mcp behind a Traefik reverse proxy.
+# 예제 override: Traefik 리버스 프록시 뒤에 chromadb-remote-mcp 를 공개한다.
+#
+# This is an OPTIONAL EXAMPLE and contains no host specific values: copy it, keep the copy
+# on the server only, and set the variables below in that host's .env.
+# 선택 예제이며 호스트 고유 값이 없다. 복사해서 서버에만 두고, 아래 변수는 그 호스트의 .env 에 설정한다.
+#
+#   cp docker-compose.traefik.example.yml docker-compose.traefik.yml
+#   # .env: COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml
+#   #       TRAEFIK_HOST=mcp.example.com  TRAEFIK_CERT_RESOLVER=<your resolver>
+#   ./deploy.sh update          # deploy.sh merges the colon-separated list in order
+#
+# Variables / 변수 (all read from .env):
+#   TRAEFIK_HOST           required: public host name / 필수: 공개 호스트명
+#   TRAEFIK_CERT_RESOLVER  required: Traefik certificate resolver name / 필수: 인증서 resolver 이름
+#   TRAEFIK_NETWORK        external network Traefik is attached to (default: traefik) /
+#                          Traefik 이 붙어 있는 external 네트워크 (기본: traefik)
+#   TRAEFIK_ENTRYPOINT     TLS entrypoint (default: websecure) / TLS 엔트리포인트 (기본: websecure)
+#   TRAEFIK_MIDDLEWARES    optional comma-separated middlewares; only read when you uncomment the
+#                          `middlewares` label below (default: label off, none attached). Measured
+#                          with `docker compose config`: once the label is uncommented the `:?`
+#                          makes this variable required — unset or an empty value
+#                          (`TRAEFIK_MIDDLEWARES=`) both abort with "required variable
+#                          TRAEFIK_MIDDLEWARES is missing a value", so to run without
+#                          middlewares keep the label commented /
+#                          선택 미들웨어(쉼표 구분); 아래 `middlewares` 라벨 주석을 풀 때만 읽는다 (기본: 라벨 꺼짐, 없음).
+#                          `docker compose config` 실측: 라벨 주석을 풀면 `:?` 때문에 이 변수가 필수가 된다 —
+#                          미설정이든 빈 값(`TRAEFIK_MIDDLEWARES=`)이든 "required variable
+#                          TRAEFIK_MIDDLEWARES is missing a value" 로 중단되므로, 미들웨어 없이 쓰려면
+#                          라벨을 주석으로 남겨 둔다
+#   TRAEFIK_ROUTER_NAME    router/service name (default: chromadb-mcp) / 라우터·서비스 이름 (기본: chromadb-mcp)
+#
+# Requires Docker Compose v2.24 or newer (the `ports: !reset []` tag below); check with
+# `docker compose version`. Older Compose rejects the file or keeps the base port mapping.
+# Docker Compose v2.24 이상이 필요하다(아래 `ports: !reset []` 태그). `docker compose version` 으로
+# 확인한다. 더 낮은 버전은 파일을 거부하거나 기본 파일의 포트 매핑을 그대로 유지한다.
+#
+# Pitfall / 주의: router and service names are global in Traefik. Pick a TRAEFIK_ROUTER_NAME
+# that no other container on that Traefik already uses, or the two routes collide.
+# Traefik 의 라우터·서비스 이름은 전역이다. 같은 Traefik 의 다른 컨테이너와 겹치지 않는
+# TRAEFIK_ROUTER_NAME 을 쓰지 않으면 두 라우트가 충돌한다.
+
+services:
+  caddy:
+    # Traefik reaches the container over the shared network, so drop the base file's host
+    # port mapping (compose merges lists; `!reset` clears the inherited one).
+    # Traefik 은 공유 네트워크로 컨테이너에 접근하므로 기본 파일의 호스트 포트 매핑을 비운다
+    # (compose 는 목록을 병합하므로 `!reset` 으로 상속값을 지운다).
+    ports: !reset []
+    networks:
+      - chroma-network
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME:-chromadb-mcp}.rule=Host(`${TRAEFIK_HOST:?set TRAEFIK_HOST in .env}`)"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME:-chromadb-mcp}.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME:-chromadb-mcp}.tls.certresolver=${TRAEFIK_CERT_RESOLVER:?set TRAEFIK_CERT_RESOLVER in .env}"
+      # Optional middlewares: uncomment the next line and set TRAEFIK_MIDDLEWARES in .env.
+      # A label always exists once listed (compose cannot omit one conditionally), and the Traefik
+      # docs do not define an empty `middlewares` value, so it is off by default. Measured with
+      # `docker compose config` (Compose v5.5.1): with the label uncommented, unset AND empty
+      # (`TRAEFIK_MIDDLEWARES=`) both abort with "required variable TRAEFIK_MIDDLEWARES is
+      # missing a value" — the `:?` guard does not distinguish them. No middlewares = keep
+      # this line commented.
+      # 선택 미들웨어: 사용하려면 다음 줄의 주석을 풀고 .env 에 TRAEFIK_MIDDLEWARES 를 설정한다.
+      # 라벨은 목록에 넣는 순간 항상 생기고(compose 는 조건부 생략 불가) Traefik 문서에 빈 `middlewares` 값의
+      # 동작이 정의돼 있지 않으므로, 기본은 꺼 둔다. `docker compose config` 실측(Compose v5.5.1):
+      # 라벨 주석을 풀면 미설정과 빈 값(`TRAEFIK_MIDDLEWARES=`)이 모두 "required variable
+      # TRAEFIK_MIDDLEWARES is missing a value" 로 중단된다(`:?` 는 둘을 구분하지 않는다).
+      # 미들웨어 없이 쓰려면 이 줄은 주석으로 남겨 둔다.
+      # - "traefik.http.routers.${TRAEFIK_ROUTER_NAME:-chromadb-mcp}.middlewares=${TRAEFIK_MIDDLEWARES:?set TRAEFIK_MIDDLEWARES in .env}"
+      - "traefik.http.services.${TRAEFIK_ROUTER_NAME:-chromadb-mcp}.loadbalancer.server.port=80"
+
+networks:
+  # Owned by the Traefik stack: join it, never create it (external).
+  # Traefik 스택이 소유한다: 참여만 하고 만들지 않는다(external).
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

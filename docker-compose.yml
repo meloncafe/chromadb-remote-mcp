@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   mcp-server:
-    image: devsaurus/chromadb-remote-mcp:latest
+    image: devsaurus/chromadb-remote-mcp:${MCP_IMAGE_TAG:-latest}
     container_name: chroma-mcp-server
     expose:
       - "3000"
@@ -66,6 +66,11 @@ services:
       - OAUTH_PROXY_STORE_MAX=${OAUTH_PROXY_STORE_MAX}
       # v2.1.1: pre-shared client_id 허용 flag (LibreChat 패턴)
       - OAUTH_PROXY_ALLOW_PRESHARED_CLIENT=${OAUTH_PROXY_ALLOW_PRESHARED_CLIENT}
+      # v2.2.3 CVE-2026-45829 hardening. Empty means the source default: the REST proxy is
+      # OFF unless "true" (src/index.ts isRestProxyEnabled), and the DCR redirect_uri
+      # allowlist being empty disables DCR (src/auth/oauth-proxy/register.ts).
+      - CHROMA_REST_PROXY_ENABLED=${CHROMA_REST_PROXY_ENABLED}
+      - OAUTH_PROXY_REDIRECT_URI_ALLOWLIST=${OAUTH_PROXY_REDIRECT_URI_ALLOWLIST}
       # Declared Chroma server version for provenance reporting (chroma_get_server_version
       # tool and /health/detail). The Chroma Rust server hardcodes "1.0.0" on its version
       # endpoint, so the MCP server trusts this operator-declared value instead. Keep in
