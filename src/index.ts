@@ -20,6 +20,7 @@ import {timingSafeEqual} from "crypto";
 import {createChromaTools, handleChromaTool, ADMIN_TOOLS_ENABLED, DESTRUCTIVE_OPS_ENABLED} from "./chroma-tools.js";
 import { getAdminClient } from "./admin-client.js";
 import type {ChromaConfig} from "./types.js";
+import {getChromaVersion, getMcpVersion} from "./version.js";
 import {
   resolveEmbeddingProviderConfig,
   embeddingProviderConfig,
@@ -1157,7 +1158,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: "chroma-remote-mcp",
-      version: "2.0.0",
+      version: getMcpVersion().value,
     },
     {
       capabilities: {
@@ -1621,11 +1622,20 @@ export async function healthHandler(_req: express.Request, res: express.Response
 export async function healthDetailHandler(_req: express.Request, res: express.Response) {
   try {
     await getChromaClient().heartbeat();
+    let serverReportedVersion: string | null = null;
+    try {
+      serverReportedVersion = await getChromaClient().version();
+    } catch (error) {
+      console.error("Failed to query Chroma server version:", error);
+    }
     res.json({
       status: "ok",
       service: "chroma-remote-mcp",
       chroma: `http://${chromaConfig.host}:${chromaConfig.port}`,
       chromadb: "connected",
+      mcp_version: getMcpVersion(),
+      chroma_version: getChromaVersion(serverReportedVersion).version,
+      chroma_version_server_reported: serverReportedVersion,
     });
   } catch (error) {
     res.status(503).json({
@@ -1633,6 +1643,7 @@ export async function healthDetailHandler(_req: express.Request, res: express.Re
       service: "chroma-remote-mcp",
       chromadb: "disconnected",
       error: sanitizeErrorForClient(error),
+      mcp_version: getMcpVersion(),
     });
   }
 }

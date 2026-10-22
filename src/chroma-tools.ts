@@ -1,5 +1,6 @@
 import { ChromaClient, ReadLevel as SdkReadLevel } from "chromadb";
 import { getAdminClient } from "./admin-client.js";
+import { getChromaVersion, getMcpVersion } from "./version.js";
 import type {
   AdminToolsEnabled,
   CollectionMetadataV2,
@@ -859,7 +860,7 @@ export function createChromaTools(_chromaClient: ChromaClient): ToolDefinition[]
     },
     {
       name: "chroma_get_server_version",
-      description: "Get the version of the connected Chroma server",
+      description: "Get MCP server and Chroma server versions with provenance. The Chroma server-reported value is a hardcoded placeholder in the Rust server; the actual version comes from CHROMA_SERVER_VERSION when declared.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -2063,12 +2064,21 @@ export async function handleChromaTool(
       }
 
       case "chroma_get_server_version": {
-        const version = await chromaClient.version();
+        const serverReported = await chromaClient.version();
+        const mcpVersion = getMcpVersion();
+        const chromaReport = getChromaVersion(serverReported);
+        const payload = {
+          text: `Chroma server version: ${serverReported}`,
+          mcp_version: mcpVersion,
+          chroma_version: chromaReport.version,
+          chroma_version_server_reported: chromaReport.serverReported,
+          chroma_version_server_reported_trusted: chromaReport.serverReportedTrusted,
+        };
         return {
           content: [
             {
               type: "text",
-              text: `Chroma server version: ${version}`,
+              text: JSON.stringify(payload, null, 2),
             },
           ],
         };

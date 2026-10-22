@@ -22,6 +22,11 @@ FROM node:24.22.1-slim
 # MCP Register Label
 LABEL io.modelcontextprotocol.server.name="io.github.meloncafe/chromadb-remote-mcp"
 
+# Release version — publish-release.yml already passes `VERSION` build-arg from
+# the release tag; export it as a runtime `ARG`/`ENV` so the server reports the
+# released version. Local builds without the build-arg report "dev".
+ARG VERSION=dev
+ENV MCP_SERVER_VERSION=${VERSION}
 
 # Create non-root user
 RUN groupadd -r mcpuser && useradd -r -g mcpuser mcpuser
