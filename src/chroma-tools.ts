@@ -336,6 +336,50 @@ export function validateDocumentIds(ids: unknown): { valid: boolean; error?: str
 }
 
 /**
+ * Describes the runtime type of a value for validation error messages.
+ * @param value - Value to describe.
+ * @returns "null" for null, "array" for arrays, otherwise the typeof result.
+ */
+function describeValueType(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  return typeof value;
+}
+
+/**
+ * Validates that a value is an array whose elements are all strings.
+ * Tool schemas declare `items: { type: "string" }`, but MCP clients do not
+ * enforce it. Object documents previously reached the embedding provider and
+ * failed there with an opaque upstream 400 (Gemini embedContent
+ * "Starting an object on a scalar field"); this check rejects them up front.
+ * @param values - Value to validate (accepts any type for runtime validation).
+ * @param fieldName - Argument name used in the error message.
+ * @returns Validation result with error message if invalid.
+ */
+export function validateStringArray(
+  values: unknown,
+  fieldName: string,
+): { valid: boolean; error?: string } {
+  if (!Array.isArray(values)) {
+    return { valid: false, error: `${fieldName} must be an array` };
+  }
+  for (let i = 0; i < values.length; i++) {
+    const element: unknown = values[i];
+    if (typeof element !== "string") {
+      return {
+        valid: false,
+        error: `${fieldName}[${i}] must be a string, got ${describeValueType(element)}`,
+      };
+    }
+  }
+  return { valid: true };
+}
+
+/**
  * Creates MCP tool definitions for ChromaDB operations.
  * @param _chromaClient - ChromaDB client instance (unused, for API consistency).
  * @returns Array of MCP tool definitions with schemas.
@@ -1209,6 +1253,15 @@ export async function handleChromaTool(
       }
 
       case "chroma_add_documents": {
+        if (args.documents !== undefined && args.documents !== null) {
+          const documentsValidation = validateStringArray(args.documents, "documents");
+          if (!documentsValidation.valid) {
+            return {
+              content: [{ type: "text", text: `Error: ${documentsValidation.error}` }],
+            };
+          }
+        }
+
         const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
@@ -1283,6 +1336,15 @@ export async function handleChromaTool(
       }
 
       case "chroma_query_documents": {
+        if (args.query_texts !== undefined && args.query_texts !== null) {
+          const queryTextsValidation = validateStringArray(args.query_texts, "query_texts");
+          if (!queryTextsValidation.valid) {
+            return {
+              content: [{ type: "text", text: `Error: ${queryTextsValidation.error}` }],
+            };
+          }
+        }
+
         const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
@@ -1519,6 +1581,15 @@ export async function handleChromaTool(
       }
 
       case "chroma_update_documents": {
+        if (args.documents !== undefined && args.documents !== null) {
+          const documentsValidation = validateStringArray(args.documents, "documents");
+          if (!documentsValidation.valid) {
+            return {
+              content: [{ type: "text", text: `Error: ${documentsValidation.error}` }],
+            };
+          }
+        }
+
         const collection = await chromaClient.getCollection({ name: args.collection_name });
         const matchResult = assertCollectionMetadataMatch(collection.metadata, serverProviderCfg);
         const compatGuard = handleLegacyCompat(matchResult, toolName);
@@ -1680,6 +1751,15 @@ export async function handleChromaTool(
               },
             ],
           };
+        }
+
+        if (args.documents !== undefined && args.documents !== null) {
+          const documentsValidation = validateStringArray(args.documents, "documents");
+          if (!documentsValidation.valid) {
+            return {
+              content: [{ type: "text", text: `Error: ${documentsValidation.error}` }],
+            };
+          }
         }
 
         const collection = await chromaClient.getCollection({ name: args.collection_name });
