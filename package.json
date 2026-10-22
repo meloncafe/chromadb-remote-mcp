@@ -63,14 +63,13 @@
     "@types/node": "^26.6.5",
     "@typescript-eslint/eslint-plugin": "^8.72.0",
     "@typescript-eslint/parser": "^8.72.0",
-    "@typescript/typescript6": "^6.0.2",
     "eslint": "^10.13.0",
     "jest": "^30.5.2",
     "jest-junit": "^17.0.0",
     "prettier": "^3.9.10",
     "ts-jest": "^29.4.15",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.2"
   },
   "engines": {
     "node": ">=26.12.1",

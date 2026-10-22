@@ -20,6 +20,16 @@
       "automerge": true
     },
     {
+      "description": "Hold typescript on 6.x until ts-jest/typescript-eslint support TS7 (peers: ts-jest <7, typescript-eslint <6.1.0)",
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Disable Node.js major version updates",
       "matchDatasources": [
         "docker",
