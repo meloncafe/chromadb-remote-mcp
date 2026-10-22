@@ -3,6 +3,8 @@ name: Security Scan
 on:
   pull_request:
     branches: [ main, release ]
+  push:
+    branches: [ main ]
   schedule:
     # Run security scan weekly on Mondays at 00:00 UTC
     - cron: "0 0 * * 1"
@@ -29,7 +31,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Run yarn audit
         run: yarn audit --json || true
@@ -66,6 +68,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # CodeQL TypeScript extraction requires a Node.js runtime on the runner.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26.12.1"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
@@ -90,10 +98,65 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Pinned trufflehog binary (replaces trufflesecurity/trufflehog@main action,
+      # whose docker bind mount breaks on DooD self-hosted runners).
+      # Scan range mirrors the action's event logic: push scans
+      # github.event.before..after (full history when before is 0000000... on a
+      # new branch; skipped entirely when the commits array is empty);
+      # pull_request scans base..head; schedule/dispatch scan full history.
       - name: TruffleHog OSS
-        uses: trufflesecurity/trufflehog@main
-        with:
-          extra_args: --results=verified
+        env:
+          TRUFFLEHOG_VERSION: v3.99.3
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+          COMMIT_IDS: ${{ toJson(github.event.commits.*.id) }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          TOOL_DIR="${RUNNER_TEMP:-/tmp}/trufflehog-${TRUFFLEHOG_VERSION}"
+          mkdir -p "$TOOL_DIR"
+          curl -fsSL --retry 3 -o "$TOOL_DIR/trufflehog_${TRUFFLEHOG_VERSION#v}_linux_amd64.tar.gz" \
+            "https://github.com/trufflesecurity/trufflehog/releases/download/${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION#v}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$TOOL_DIR/checksums.txt" \
+            "https://github.com/trufflesecurity/trufflehog/releases/download/${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION#v}_checksums.txt"
+          EXPECTED_SHA=$(grep -F "trufflehog_${TRUFFLEHOG_VERSION#v}_linux_amd64.tar.gz" "$TOOL_DIR/checksums.txt" | awk '{print $1}')
+          echo "${EXPECTED_SHA}  ${TOOL_DIR}/trufflehog_${TRUFFLEHOG_VERSION#v}_linux_amd64.tar.gz" | sha256sum -c -
+          tar -xzf "$TOOL_DIR/trufflehog_${TRUFFLEHOG_VERSION#v}_linux_amd64.tar.gz" -C "$TOOL_DIR" trufflehog
+
+          BASE=""
+          HEAD=""
+          if [ "$EVENT_NAME" = "push" ]; then
+            # toJson([]) is "[]" (possibly pretty-printed) — empty-array check without jq,
+            # so the step has no jq/apt dependency on the containerized self-hosted runner.
+            if [ "$(printf '%s' "$COMMIT_IDS" | tr -d '[:space:]')" = "[]" ]; then
+              echo "No commits to scan"
+              exit 0
+            fi
+            HEAD="$PUSH_AFTER"
+            if [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BASE=""
+            else
+              BASE="$PUSH_BEFORE"
+            fi
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE_SHA"
+            HEAD="$PR_HEAD_SHA"
+          fi
+          if [ -n "$BASE" ] && [ "$BASE" = "$HEAD" ]; then
+            echo "::error::BASE and HEAD commits are the same. TruffleHog won't scan anything."
+            exit 1
+          fi
+
+          "$TOOL_DIR/trufflehog" git "file://$GITHUB_WORKSPACE" \
+            --since-commit "$BASE" \
+            --branch "$HEAD" \
+            --fail \
+            --no-update \
+            --github-actions \
+            --results=verified
 
   typescript-check:
     name: TypeScript Type Check
@@ -111,7 +174,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Run type check
         run: yarn type-check

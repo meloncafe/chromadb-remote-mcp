@@ -42,7 +42,7 @@ jobs:
         run: npm i -g --force corepack && corepack enable
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Run type check
         run: yarn type-check

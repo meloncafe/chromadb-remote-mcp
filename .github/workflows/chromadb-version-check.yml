@@ -22,9 +22,6 @@ jobs:
   chromadb-version-check:
     name: ChromaDB Version Safety Check
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/chromadb-remote-mcp
 
     steps:
       - name: Checkout
