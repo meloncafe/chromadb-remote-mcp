@@ -1,5 +1,7 @@
 # Changelog
 
+[한국어 문서](CHANGELOG.ko.md)
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -7,146 +9,178 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`CHROMA_SERVER_VERSION`** — operator-declared Chroma server version. `chroma_get_server_version` and `/health/detail` report it as the trusted Chroma version; when unset they report "unknown" with provenance instead of guessing, because the Chroma Rust server hardcodes "1.0.0" on its version endpoints (chroma-core/chroma 1.5.9, rust/frontend/src/server.rs:647-654). `docker-compose.yml` passes `${CHROMA_SERVER_VERSION:-1.5.9}` — keep it in sync with the chromadb image pin.
+- **`MCP_SERVER_VERSION`** — MCP wrapper version, baked into the image at build time: the release workflow passes the tag-derived `VERSION` build-arg → Dockerfile `ARG VERSION=dev` → `ENV MCP_SERVER_VERSION`. Builds without the build-arg report "dev"; `package.json` is intentionally not a source (frozen at "3.0.0").
+- **`/health/detail` version reporting** — now includes `mcp_version`, `chroma_version`, and `chroma_version_server_reported`; the disconnected branch also reports `mcp_version`. The public `/health` endpoint stays `{status:"ok"}` per the minimal-exposure contract (R6.b, CVE-2026-45829).
+
+### Changed
+
+- **`chroma_get_server_version` now returns a JSON report** — previously a plain `Chroma server version: <raw>` sentence. The JSON string carries: `text` (the legacy sentence, preserved), `mcp_version` / `chroma_version` as `{value, source}` pairs with explicit provenance, `chroma_version_server_reported` (raw value from the server's version endpoint), and `chroma_version_server_reported_trusted` (false when the server reports the hardcoded "1.0.0" sentinel). **Consumers parsing the plain-text response must update.**
+- **MCP `initialize` serverInfo.version** — now reports the `MCP_SERVER_VERSION` value (previously hardcoded "2.0.0").
+
+### Fixed
+
+- **CI fixes** — chromadb-version-check workflow: removed the monorepo `working-directory: packages/chromadb-remote-mcp` default that broke the standalone repo. CodeQL (Security Scan): added `setup-node` (26.12.1), required for TypeScript extraction. `yarn install --frozen-lockfile` → `--immutable` across the codecov / publish-release / security-scan workflows. Security Scan now also runs on main pushes.
+
+### Security
+
+- **brace-expansion lockfile refresh** — vulnerable versions 2.1.1 / 5.0.7 / 5.0.9 refreshed to 2.1.7 / 5.0.12 in `yarn.lock`.
+- **TruffleHog pinned to a checksum-verified v3.99.3 binary** — replaces the floating `trufflesecurity/trufflehog@main` action (its docker bind mount breaks on DooD self-hosted runners). Scan range mirrors the action's event logic: push scans before..after (full history on new branches, skipped when the commits array is empty), pull_request scans base..head, schedule/dispatch scan full history.
+
+## [3.0.15] - 2026-10-22
+
+### Fixed
+
+- **Non-string `documents` / `query_texts` elements are now rejected before embedding** — `chroma_add_documents` / `chroma_update_documents` / `chroma_upsert_documents` (`documents`) and `chroma_query_documents` (`query_texts`) validate that every array element is a string with the new `validateStringArray` helper and fail fast before `getCollection`, so the Gemini `embedContent` call never receives object-shaped input (previously an opaque upstream HTTP 400 — "Starting an object on a scalar field"). Adds 23 unit tests (`tests/unit/chroma-tools.string-array-guard.test.ts`, including the object-shaped documents payload).
+- **TypeScript pinned to 6.x until TS7 support lands** — `ts-jest` (peer `<7`) and `typescript-eslint` (peer `<6.1.0`) cannot load the TS7 native compiler, so `typescript` is reverted to `^6.0.2` (from `^7.0.2`) and the `@typescript/typescript6` alias is dropped. Renovate now holds `typescript` major updates (`.github/renovate.json`).
+
+### Changed
+
+- **Dependency updates from Renovate/Dependabot (#98, #102~#104)** — non-major/patch updates: ip-address, yarn engines, node CI (#98); baseline-browser-mapping, browserslist, fast-uri, hono, js-yaml, protobufjs, qs, tar, undici (#102, 9 packages); `@typescript-eslint/*` `^8.71.1` → `^8.72.0`, dotenv, eslint, jose, ts-jest, etc. (#103, non-major); handlebars `4.7.9` → `4.7.10`, proxy-addr (#104).
+- **Direct dependency commits (82aec87, 0782ca3)** — runtime: `dotenv` `^17.4.2` → `^18.0.7` (major), `@modelcontextprotocol/sdk` `^1.30.0` → `^1.32.1`, `express` `^5.2.1` → `^5.3.0`, `express-rate-limit` `^8.7.0` → `^8.7.1`; dev: `@types/node` `^22.20.3` → `^26.6.5` (major); `packageManager` yarn `4.18.0` → `4.18.1`.
+
 ## [3.0.0] - 2026-06-03
 
 ### Security
 
-- **CVE-2026-45829 (ChromaToast) 대응 하드닝** — ChromaDB Python FastAPI 서버의 pre-auth RCE(사용자 제어 embedding-function config + `trust_remote_code` + 악성 HuggingFace 모델, CVSS 10.0). 본 MCP 게이트웨이는 취약 서버가 아니며 도구 경로 RCE는 chromadb JS SDK 3.4.3 이 중립화하지만(`serializeEmbeddingFunction` 이 MCP 가 넘기는 plain JSON 을 `{type:"legacy"}` 로 떨궈 싱크 미도달), fail-open 인증 + 무필터 catch-all REST 프록시 + unpinned 서버 이미지가 결합한 "조건부 증폭기" 표면을 제거.
+- **CVE-2026-45829 (ChromaToast) hardening** — pre-auth RCE in the ChromaDB Python FastAPI server (user-controlled embedding-function config + `trust_remote_code` + a malicious HuggingFace model, CVSS 10.0). This MCP gateway itself is not the vulnerable server, and tool-path RCE is already neutralized by chromadb JS SDK 3.4.3 (`serializeEmbeddingFunction` drops the plain JSON the MCP layer hands over as `{type:"legacy"}`, so the sync never fires), but this release removes the "conditional amplifier" surface formed by the combination of fail-open auth + unfiltered catch-all REST proxy + unpinned server images.
 
 ### BREAKING
 
-- **fail-closed 부팅 인증** — OIDC 발급자(`OIDC_ISSUERS`/`OIDC_PRESET`)도 `MCP_AUTH_TOKEN` 도 설정되지 않으면 `NODE_ENV` 와 무관하게 부팅을 거부한다 (기존 dev 암묵 fail-open 제거). 개발용 무인증은 `ALLOW_INSECURE_NO_AUTH=true` 명시 옵트인에서만 허용되며, 이 경우에도 `/api/*` REST 프록시 경로는 절대 fail-open 되지 않는다.
-- **OIDC `audience` 필수** — OIDC 발급자가 설정된 경우 `OIDC_AUDIENCE`(또는 OAuth proxy 모드의 `GOOGLE_OAUTH_CLIENT_ID`) 가 필수. 미설정 시 부팅 실패. 이전엔 audience 미설정 시 jose 가 `aud` 검증을 건너뛰어 동일 발급자의 타 클라이언트 토큰이 통과할 수 있었다.
-- **catch-all REST 프록시 기본 비활성** — ChromaDB REST 패스스루는 이제 `CHROMA_REST_PROXY_ENABLED=true` 일 때만 mount 된다 (이전엔 무조건 활성).
+- **Fail-closed boot authentication** — boot is refused regardless of `NODE_ENV` unless either an OIDC issuer (`OIDC_ISSUERS`/`OIDC_PRESET`) or `MCP_AUTH_TOKEN` is configured (the previous implicit dev fail-open is removed). Unauthenticated development is allowed only via the explicit `ALLOW_INSECURE_NO_AUTH=true` opt-in, and even then the `/api/*` REST proxy paths never fail open.
+- **OIDC `audience` mandatory** — when an OIDC issuer is configured, `OIDC_AUDIENCE` (or `GOOGLE_OAUTH_CLIENT_ID` of OAuth proxy mode) is required, and boot fails otherwise. Previously, with audience unset, jose skipped `aud` verification, so tokens minted for other clients of the same issuer could pass.
+- **Catch-all REST proxy disabled by default** — the ChromaDB REST passthrough is now mounted only when `CHROMA_REST_PROXY_ENABLED=true` (previously it was unconditionally enabled).
 
 ### Added
 
-- **`ALLOW_INSECURE_NO_AUTH`** — 개발용 무인증 명시 옵트인 (REST 프록시 경로 제외).
-- **`CHROMA_REST_PROXY_ENABLED`** (기본 OFF) — catch-all ChromaDB REST 프록시 게이트. 활성화 시 체인: `validateOriginHeader`(DNS-rebind 방어) → `oidcAuthMiddleware`(옵트인 무시, 항상 인증) → pathFilter(컬렉션 생성/변형 + `/embedding` 경로 차단) → proxyReq 본문에서 `configuration.embedding_function` strip.
-- **`OAUTH_PROXY_BASE_URL`** — OAuth proxy 활성 시 canonical URL 고정값(필수). `X-Forwarded-Host` 스푸핑을 무시.
-- **`OAUTH_PROXY_REDIRECT_URI_ALLOWLIST`** — DCR `redirect_uris` exact-match allowlist (콤마 구분). 미설정 + proxy 활성 시 모든 DCR 요청 거부.
-- **Google OIDC `azp` 검증** — Google 발급 토큰의 authorized-party claim 을 expected client id 와 추가 대조.
-- **`GET /health/detail`** — 인증 뒤 상세 health(내부 ChromaDB host:port, 연결 상태).
-- **`.github/workflows/chromadb-version-check.yml`** — ChromaDB 서버 이미지가 취약 범위(1.0.0–1.5.8) 이거나 chromadb SDK `< 3.4.3` 이면 CI fail.
+- **`ALLOW_INSECURE_NO_AUTH`** — explicit opt-in for unauthenticated development (REST proxy paths excluded).
+- **`CHROMA_REST_PROXY_ENABLED`** (default OFF) — gate for the catch-all ChromaDB REST proxy. When enabled, the chain is: `validateOriginHeader` (DNS-rebind defense) → `oidcAuthMiddleware` (ignores the opt-in, always authenticates) → pathFilter (blocks collection create/mutate and `/embedding` paths) — strips `configuration.embedding_function` from the proxyReq body.
+- **`OAUTH_PROXY_BASE_URL`** — mandatory canonical-URL pin when OAuth proxy is enabled. Ignores `X-Forwarded-Host` spoofing.
+- **`OAUTH_PROXY_REDIRECT_URI_ALLOWLIST`** — exact-match allowlist (comma-separated) for DCR `redirect_uris`. Unset + proxy enabled → all DCR requests rejected.
+- **Google OIDC `azp` check** — additionally compares the authorized-party claim of Google-issued tokens against the expected client id.
+- **`GET /health/detail`** — detailed health behind auth (internal ChromaDB host:port, connection status).
+- **`.github/workflows/chromadb-version-check.yml`** — CI fails if the ChromaDB server is in the vulnerable range (1.0.0–1.5.8) or the chromadb SDK is `< 3.4.3`.
 
 ### Changed
 
-- **`chroma_modify_collection` 메타데이터 보존** — 클라이언트 `metadata` 를 `buildCollectionMetadata` 로 감싸 서버 소유 `embedding_provider`/`embedding_model`/`embedding_dimensions` 키를 보존(create/get-or-create 경로와 일관). 클라이언트가 임베딩 메타데이터를 우회 변경할 수 없다.
-- **`GET /health` 정보 최소화** — 무인증 응답이 `{status:"ok"}` 만 반환(내부 host:port 미노출). 상세는 `/health/detail`(인증 필요)로 이동.
-- **ChromaDB 서버 이미지 핀** — 3 개 docker-compose 전부 `chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6` 로 고정(CVE 영향 범위 바로 위 첫 안정 릴리스). `.env.example` 에 `CHROMADB_VERSION` 비취약 최소 버전 문서화.
+- **`chroma_modify_collection` metadata preservation** — client-supplied `metadata` is wrapped with `buildCollectionMetadata` to preserve the server-owned `embedding_provider`/`embedding_model`/`embedding_dimensions` keys (consistent with the create/get-or-create path). Clients can no longer bypass-change embedding metadata.
+- **`GET /health` information minimized** — the unauthenticated response returns only `{status:"ok"}` (internal host:port not exposed). Details moved to `/health/detail` (auth required).
+- **ChromaDB server image pin** — all 3 docker-compose files pin `chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6` (first stable release just above the CVE-affected range). `.env.example` documents the non-vulnerable minimum `CHROMADB_VERSION`.
 
 ### Migration
 
-- **무인증으로 운영하던 배포는 부팅에 실패한다.** `MCP_AUTH_TOKEN` 또는 OIDC(`OIDC_ISSUERS`/`OIDC_PRESET` + `OIDC_AUDIENCE`) 를 설정하거나, 신뢰된 내부 환경에 한해 `ALLOW_INSECURE_NO_AUTH=true` 를 명시한다.
-- ChromaDB REST 패스스루를 사용 중이었다면 `CHROMA_REST_PROXY_ENABLED=true` 를 명시해야 한다. 대부분의 용례는 MCP 도구로 충분하므로 비활성 유지를 권장.
-- `OIDC_PRESET=google` 등 OIDC 사용자는 `OIDC_AUDIENCE` 를 추가해야 부팅된다.
-- `OAUTH_PROXY_ENABLED=true` 사용자는 `OAUTH_PROXY_BASE_URL` 과 `OAUTH_PROXY_REDIRECT_URI_ALLOWLIST` 를 설정해야 한다.
+- **Deployments that ran unauthenticated will fail to boot.** Configure `MCP_AUTH_TOKEN` or OIDC (`OIDC_ISSUERS`/`OIDC_PRESET` + `OIDC_AUDIENCE`), or — trusted internal environments only — explicitly set `ALLOW_INSECURE_NO_AUTH=true`.
+- If you were using the ChromaDB REST passthrough, you must now explicitly set `CHROMA_REST_PROXY_ENABLED=true`. Most use cases are covered by the MCP tools; keeping it disabled is recommended.
+- OIDC users (e.g. `OIDC_PRESET=google`) must add `OIDC_AUDIENCE` to boot.
+- `OAUTH_PROXY_ENABLED=true` users must configure `OAUTH_PROXY_BASE_URL` and `OAUTH_PROXY_REDIRECT_URI_ALLOWLIST`.
 
 ## [2.2.3] - 2026-05-15
 
 ### Fixed
 
-- **Google `invalid_scope: offline_access` 회귀 해소** — v2.2.1 이 OIDC 표준 `offline_access` scope 를 자동 추가했으나 **Google OAuth 는 이 scope 를 미지원** (`Some requested scopes were invalid. invalid=[offline_access]`). v2.2.3 은 자동 추가를 제거 — Google 에서 refresh_token 을 받기 위해서는 `access_type=offline` + `prompt=consent` (둘 다 v2.2.1 부터 적용 중) 만으로 충분하다. `OAUTH_PROXY_GOOGLE_SCOPES` env 도 사용자 지정 그대로 사용.
-- **`/.well-known/oauth-authorization-server` `scopes_supported`** — `offline_access` 자동 append 제거. Google 가 실제로 받는 scope 만 광고.
+- **Google `invalid_scope: offline_access` regression resolved** — v2.2.1 auto-appended the OIDC-standard `offline_access` scope, but **Google OAuth does not support this scope** (`Some requested scopes were invalid. invalid=[offline_access]`). v2.2.3 removes the auto-append — to receive a refresh_token from Google, `access_type=offline` + `prompt=consent` (both in effect since v2.2.1) is sufficient. The `OAUTH_PROXY_GOOGLE_SCOPES` env is also used exactly as the user specified.
+- **`/.well-known/oauth-authorization-server` `scopes_supported`** — removed the `offline_access` auto-append. Advertises only the scopes Google actually accepts.
 
 ### Migration
 
-- v2.2.1 / v2.2.2 에서 OAuth 흐름이 `invalid_scope` 로 막혔던 사용자는 v2.2.3 배포 후 정상 동작. 추가 작업 불필요.
-- refresh_token 동작은 그대로 — `access_type=offline` + `prompt=consent` 조합으로 Google 이 첫 consent 시 refresh_token 발급, 1 시간 만료 시 클라이언트가 자동 갱신.
+- Users whose OAuth flow was blocked by `invalid_scope` on v2.2.1 / v2.2.2 work normally after deploying v2.2.3. No further action needed.
+- refresh_token behaviour is unchanged — with the `access_type=offline` + `prompt=consent` combination, Google issues a refresh_token at first consent, and the client auto-refreshes on 1-hour expiry.
 
 ## [2.2.2] - 2026-05-15
 
 ### Fixed
 
-- **OAuth proxy: 브라우저 CORS 차단으로 인증 실패 (`Failed to fetch`)** — Claude.ai / Cloudflare AI 대시보드 (`dash.cloudflare.com`) 같은 브라우저 클라이언트가 `/oauth/token` POST 시 `Access to fetch ... blocked by CORS policy` 로 차단되던 문제. v2.1.0 의 `validateOriginHeader` 미들웨어는 origin 차단/허용만 했고 CORS 응답 헤더 (`Access-Control-Allow-Origin` 등) 는 설정하지 않아 브라우저가 응답 자체를 unwrap 하지 못함.
+- **OAuth proxy: authentication failure due to browser CORS blocking (`Failed to fetch`)** — browser clients such as Claude.ai / the Cloudflare AI dashboard (`dash.cloudflare.com`) were blocked with `Access to fetch ... blocked by CORS policy` when POSTing to `/oauth/token`. The v2.1.0 `validateOriginHeader` middleware only blocked/allowed origins and did not set CORS response headers (`Access-Control-Allow-Origin` etc.), so browsers could not unwrap the response itself.
 
 ### Added
 
-- **`corsMiddleware`** (`src/index.ts`) — 글로벌 등록. preflight (`OPTIONS`) 는 204 + 허용 헤더로 응답하고, 실제 요청에는 `Access-Control-Allow-Origin`, `-Methods`, `-Headers`, `-Expose-Headers`, `-Max-Age` 를 echo back. `Access-Control-Allow-Credentials` 는 설정하지 않음 (Bearer 토큰 사용, 쿠키 미사용).
-- **`getCorsAllowedOrigins()`** — CORS 허용 origin 산출. 기본값:
+- **`corsMiddleware`** (`src/index.ts`) — registered globally. Preflight (`OPTIONS`) is answered with 204 + allowed headers; actual requests get `Access-Control-Allow-Origin`, `-Methods`, `-Headers`, `-Expose-Headers`, `-Max-Age` echoed back. `Access-Control-Allow-Credentials` is not set (Bearer tokens, no cookies).
+- **`getCorsAllowedOrigins()`** — computes the CORS-allowed origins. Defaults:
   - `https://claude.ai`
   - `https://api.anthropic.com`
-  - `https://dash.cloudflare.com` (Cloudflare AI Gateway 대시보드)
-  - localhost (모든 포트)
-  - `ALLOWED_ORIGINS` env 의 콤마-구분 항목 자동 병합 (idempotent)
+  - `https://dash.cloudflare.com` (Cloudflare AI Gateway dashboard)
+  - localhost (all ports)
+  - comma-separated entries from the `ALLOWED_ORIGINS` env merged automatically (idempotent)
 
 ### Notes
 
-- `validateOriginHeader` 는 그대로 유지 — DNS rebinding 방어 + `/mcp` 보호.
-- 단위 테스트 9 건 추가 (`tests/unit/index.test.ts` `corsMiddleware` describe).
+- `validateOriginHeader` is kept as is — DNS rebinding defense + `/mcp` protection.
+- 9 unit tests added (`tests/unit/index.test.ts` `corsMiddleware` describe).
 
 ## [2.2.1] - 2026-05-15
 
 ### Fixed
 
-- **OAuth proxy: 1시간마다 재인증 강제 회귀 해소** — Claude Desktop 커넥터(또는 Google ID Token 기반 모든 MCP 클라이언트) 가 v2.1.0 OAuth proxy 사용 시 1 시간마다 전체 OAuth 흐름을 다시 거치던 문제. 6 가지 원인이 동시 작동:
-  - `authorize.ts`: `access_type=online` (Google 이 refresh_token 미발급) → **`offline` 으로 변경**
-  - `authorize.ts`: `prompt=select_account` (returning user 에게 refresh_token 미발급) → **`consent` 로 변경**
-  - `authorize.ts`: scope 에 `offline_access` 부재 → **자동 추가** (override 환경변수와 무관하게 idempotent join)
-  - `register.ts` / `metadata.ts`: `grant_types` 응답에 `refresh_token` 미선언 → **`["authorization_code", "refresh_token"]` 로 확장**
-  - `token.ts`: `grant_type=refresh_token` 거부 (`unsupported_grant_type` 즉시 반환) → **분기 추가, Google `/token` 으로 forward 후 새 id_token + 회전된 refresh_token 응답**
-  - `callback.ts` / `state-store.ts`: Google 응답의 `refresh_token` 저장 안 함 → **`AuthzCodeEntry.refresh_token?` 신규 필드 + `/oauth/token` authorization_code 응답에 포함**
+- **OAuth proxy: forced hourly re-authentication regression resolved** — Claude Desktop connectors (or any MCP client based on Google ID Tokens) using the v2.1.0 OAuth proxy had to go through the full OAuth flow again every hour. Six causes acted at once:
+  - `authorize.ts`: `access_type=online` (Google does not issue a refresh_token) → **changed to `offline`**
+  - `authorize.ts`: `prompt=select_account` (no refresh_token for returning users) → **changed to `consent`**
+  - `authorize.ts`: `offline_access` missing from scopes → **auto-append** (idempotent join regardless of the override env var)
+  - `register.ts` / `metadata.ts`: `refresh_token` not declared in the `grant_types` response → **extended to `["authorization_code", "refresh_token"]`**
+  - `token.ts`: `grant_type=refresh_token` rejected (immediate `unsupported_grant_type` return) → **branch added: forwards to the Google `/token` and responds with a new id_token + rotated refresh_token**
+  - `callback.ts` / `state-store.ts`: `refresh_token` from the Google response not stored → **new `AuthzCodeEntry.refresh_token?` field + included in the `/oauth/token` authorization_code response**
 
 ### Migration
 
-- v2.1.x 환경에서 v2.2.1 로 업그레이드하면 **재인증 1 회 필요** (기존 Google grant 에 `offline_access` 가 없으므로). 이후부터 1 시간 만료 시 클라이언트가 자동 refresh 하여 재인증 불필요.
-- `OAUTH_PROXY_GOOGLE_SCOPES` 환경 변수를 명시적으로 설정한 경우에도 `offline_access` 가 자동 append 됨 (idempotent — 이미 포함되어 있으면 중복 추가 안 함).
+- Upgrading from v2.1.x to v2.2.1 requires **one re-authentication** (the existing Google grant lacks `offline_access`). Afterwards the client auto-refreshes on 1-hour expiry, so no re-authentication is needed.
+- Even when the `OAUTH_PROXY_GOOGLE_SCOPES` env var is explicitly set, `offline_access` is auto-appended (idempotent — no duplicate addition if already present).
 
 ## [2.2.0] - 2026-05-15
 
-### 신규 도구
+### New tools
 
-- **`chroma_upsert_documents`** — id 충돌 신경 안 쓰고 한 번에 add+update.
-- **`chroma_modify_collection`** — 컬렉션 이름 / 메타 / 인덱스 설정 변경.
-- **`chroma_get_or_create_collection`** — 멱등 생성 (재시도 안전).
-- **`chroma_heartbeat`** / **`chroma_get_server_version`** — 서버 헬스체크 + 버전 확인.
-- **`chroma_count_collections`** — 컬렉션 총 개수 (list 없이 빠른 조회).
-- **`chroma_get_max_batch_size`** — 클라이언트 배치 분할용 한도 조회.
-- **`chroma_get_user_identity`** — 현재 tenant + databases.
+- **`chroma_upsert_documents`** — add+update in one call without worrying about id conflicts.
+- **`chroma_modify_collection`** — change collection name / metadata / index settings.
+- **`chroma_get_or_create_collection`** — idempotent creation (retry-safe).
+- **`chroma_heartbeat`** / **`chroma_get_server_version`** — server health check + version lookup.
+- **`chroma_count_collections`** — total collection count (fast lookup without listing).
+- **`chroma_get_max_batch_size`** — limit lookup for client-side batch splitting.
+- **`chroma_get_user_identity`** — current tenant + databases.
 
-### 신규 — Distributed/Cloud 전용 (opt-in 가드)
+### New — Distributed/Cloud only (opt-in guard)
 
-`CHROMA_DISTRIBUTED_TOOLS_ENABLED=true` 일 때만 노출. chromadb 서버 내부 frontend executor 가 local / distributed 로 분리되어 있고 아래 4 개 메서드 모두 distributed executor 에만 구현되어 있어, 단일 노드 open-source 서버 (`chromadb/chroma:latest`) 에서는 미지원. Chroma Cloud 또는 self-hosted distributed Chroma 배포에서만 동작. 단일 노드에서는 LLM 의 retry 루프 / 컨텍스트 낭비 회피를 위해 기본 숨김:
+Exposed only when `CHROMA_DISTRIBUTED_TOOLS_ENABLED=true`. The chromadb server's internal frontend executor is split into local / distributed, and all 4 methods below are implemented only in the distributed executor, so the single-node open-source server (`chromadb/chroma:latest`) does not support them. Works only on Chroma Cloud or self-hosted distributed Chroma deployments. Hidden by default on single nodes to avoid LLM retry loops / context waste:
 
-- **`chroma_search`** — dense + sparse 하이브리드 검색 (ChromaDB 3.x SearchLike).
-- **`chroma_fork_collection`** / **`chroma_get_fork_count`** — zero-copy fork + 포크 수 조회.
-- **`chroma_get_indexing_status`** — WAL / 인덱스 진행 상황 가시화.
+- **`chroma_search`** — dense + sparse hybrid search (ChromaDB 3.x SearchLike).
+- **`chroma_fork_collection`** / **`chroma_get_fork_count`** — zero-copy fork + fork count lookup.
+- **`chroma_get_indexing_status`** — visibility into WAL / indexing progress.
 
-### 신규 — Admin (멀티테넌트, opt-in)
+### New — Admin (multi-tenant, opt-in)
 
-`CHROMA_ADMIN_TOOLS_ENABLED=true` 일 때만 노출:
+Exposed only when `CHROMA_ADMIN_TOOLS_ENABLED=true`:
 
 - **`chroma_admin_create_database`** / **`chroma_admin_get_database`** / **`chroma_admin_list_databases`**
 - **`chroma_admin_create_tenant`** / **`chroma_admin_get_tenant`**
 
-### 신규 — 위험 작업 (opt-in 가드)
+### New — Dangerous operations (opt-in guard)
 
-`CHROMA_ALLOW_DESTRUCTIVE_OPS=true` 일 때만 노출. 호출 시 `[DESTRUCTIVE]` 감사 라인 출력:
+Exposed only when `CHROMA_ALLOW_DESTRUCTIVE_OPS=true`. Prints a `[DESTRUCTIVE]` audit line on invocation:
 
-- **`chroma_reset_database`** — 전체 DB 리셋 (irreversible).
-- **`chroma_admin_delete_database`** — admin DB 삭제 (admin + destructive 두 env 모두 필요).
+- **`chroma_reset_database`** — reset of the entire DB (irreversible).
+- **`chroma_admin_delete_database`** — delete an admin DB (requires both the admin and destructive env vars).
 
-### 변경 — 기존 도구 schema 확장 (호환성 유지)
+### Changed — existing tool schema extensions (compatibility preserved)
 
-- **`chroma_delete_documents`** — `where` / `where_document` / `limit` 추가. ids 단독 외에 메타필터 단독 삭제 허용.
-- **`chroma_create_collection`** — `configuration` (HNSW/SPANN), `schema` 추가.
-- **`chroma_add_documents`** / **`chroma_update_documents`** — `uris` 추가 (멀티모달). update 는 `embeddings` 도 schema 노출.
-- **`chroma_query_documents`** — `query_uris`, `ids` (사전 필터) 추가.
-- **`chroma_get_documents`** / **`chroma_get_collection_count`** — `read_level` enum (`INDEX_AND_WAL` / `INDEX_ONLY`) 추가.
-- **`chroma_list_collections`** — `limit`, `offset` 기본값 명시 (default 100 / 0).
+- **`chroma_delete_documents`** — added `where` / `where_document` / `limit`. Allows deletion by metadata filter alone, in addition to ids alone.
+- **`chroma_create_collection`** — added `configuration` (HNSW/SPANN) and `schema`.
+- **`chroma_add_documents`** / **`chroma_update_documents`** — added `uris` (multimodal). update also exposes `embeddings` in its schema.
+- **`chroma_query_documents`** — added `query_uris` and `ids` (pre-filter).
+- **`chroma_get_documents`** / **`chroma_get_collection_count`** — added the `read_level` enum (`INDEX_AND_WAL` / `INDEX_ONLY`).
+- **`chroma_list_collections`** — explicit `limit` / `offset` defaults (default 100 / 0).
 
-### 환경 변수
+### Environment variables
 
-- `CHROMA_ADMIN_TOOLS_ENABLED` (기본 `false`) — admin 도구 그룹 활성화.
-- `CHROMA_ALLOW_DESTRUCTIVE_OPS` (기본 `false`) — 위험 작업 활성화.
-- `CHROMA_DISTRIBUTED_TOOLS_ENABLED` (기본 `false`) — distributed 전용 도구 활성화 (단일 노드 미지원).
+- `CHROMA_ADMIN_TOOLS_ENABLED` (default `false`) — enables the admin tool group.
+- `CHROMA_ALLOW_DESTRUCTIVE_OPS` (default `false`) — enables dangerous operations.
+- `CHROMA_DISTRIBUTED_TOOLS_ENABLED` (default `false`) — enables distributed-only tools (unsupported on a single node).
 
 ## [2.1.2] - 2026-05-14
 
 ### Fixed
 
-- **`chroma_update_documents` silent pass on missing ids** — 존재하지 않는 id 에 대한 update 가 ChromaDB SDK 측에서 에러 없이 통과하던 회귀. 호출 직전에 `collection.get({ids})` 로 존재 검증하여 누락 id 가 있으면 명시적 에러 응답 반환 (R12).
-- **`chroma_delete_collection` false-error after successful delete** — ChromaDB v2 SDK 의 `deleteCollection` 이 정상 삭제 후에도 응답 파싱에서 throw 하던 회귀 (실제 삭제는 성공). `listCollections` 로 실제 상태를 확인하여 silent recovery — 진짜 실패만 throw 전파 (R13).
+- **`chroma_update_documents` silent pass on missing ids** — regression where an update for a non-existent id passed without error on the ChromaDB SDK side. Existence is verified with `collection.get({ids})` immediately before the call, and any missing id returns an explicit error response (R12).
+- **`chroma_delete_collection` false-error after successful delete** — regression where the ChromaDB v2 SDK's `deleteCollection` threw during response parsing even after a successful delete (the deletion itself succeeded). The actual state is checked with `listCollections` for silent recovery — only genuine failures propagate the throw (R13).
 
 ## [2.1.1] - 2026-05-14
 
@@ -318,6 +352,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero active vulnerabilities in dependencies
 
 [Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v1.0.0...HEAD
+[3.0.15]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.14...v3.0.15
 [1.0.2]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.2
 [1.0.1]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.1
 [1.0.0]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.0

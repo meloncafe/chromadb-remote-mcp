@@ -233,6 +233,8 @@ cp .env.example .env
 | `CHROMA_AUTH_TOKEN` | ChromaDB 인증 토큰 (ChromaDB에서 인증이 필요한 경우)            | -                  | 아니오                |
 | `RATE_LIMIT_MAX`    | IP당 15분당 최대 요청 수                                        | `100`              | 아니오                |
 | `ALLOWED_ORIGINS`   | 허용된 origin 목록 (쉼표로 구분, DNS rebinding 방어)            | -                  | 아니오                |
+| `CHROMA_SERVER_VERSION` | 운영자가 선언하는 Chroma 서버 버전 — `chroma_get_server_version` 과 `/health/detail` 의 신뢰할 수 있는 버전 출처. **주의: `chromadb/chroma:latest` 이미지를 쓰면 이미지가 바뀌어도 이 값은 따라가지 않아 어긋날 수 있다 — 버전 태그로 핀하고 같은 값으로 맞출 것** | 미설정 시 `unknown` (docker-compose.yml 기본 `1.5.9`) | 아니오 |
+| `MCP_SERVER_VERSION` | MCP 래퍼 버전 — 릴리스 이미지에 자동 설정 (릴리스 태그 → `VERSION` build-arg), 직접 설정할 필요 없음 | 미설정 시 `dev` | 아니오 |
 
 ### 인증
 
@@ -975,6 +977,7 @@ chromadb-remote-mcp/
 ├── CONTRIBUTING.md          # 기여 가이드라인
 ├── CODE_OF_CONDUCT.md       # 행동 강령
 ├── CHANGELOG.md             # 버전 히스토리
+├── CHANGELOG.ko.md          # 버전 히스토리 (한국어)
 └── LICENSE                  # MIT 라이선스
 ```
 
