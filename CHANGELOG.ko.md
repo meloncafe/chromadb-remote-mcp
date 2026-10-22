@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [3.0.17] - 2026-10-22
+
 ### Added
 
 - **`deploy.sh` — 호스트 독립 Docker Compose 배포 도우미** — 명령 9종: `install` (최초 설정: `.env` 가 없으면 `.env.example` 에서 만들고 편집하도록 중단, 있으면 이미지 pull 후 기동), `update` (pull + `up -d --force-recreate` + dangling 이미지 prune + `CHROMA_SERVER_VERSION` 동기화 후, 그 단일 판정을 재사용해 버전 정보 출력), `start`, `stop` (`docker compose down`, 데이터는 유지), `restart` (`.env` 를 다시 읽지 않음 — `.env` 를 바꾼 뒤에는 `update`/`start` 사용), `status`, `logs [서비스]`, `version`, `backup`; `help` 는 사용법을 출력한다. 호스트별 값은 모두 `.env` 와 선택적 추가 compose 파일에 두며 스크립트에는 넣지 않는다.
@@ -372,7 +374,8 @@
 - Docker Scout 8/8 컴플라이언스 달성
 - 의존성 활성 취약점 제로
 
-[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...HEAD
+[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.17...HEAD
+[3.0.17]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...v3.0.17
 [3.0.16]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.15...v3.0.16
 [3.0.15]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.14...v3.0.15
 [1.0.2]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.2

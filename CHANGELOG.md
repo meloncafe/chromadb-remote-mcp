@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.17] - 2026-10-22
+
 ### Added
 
 - **`deploy.sh` — host-independent deployment helper for the Docker Compose stack** — 9 commands: `install` (first-time setup: creates `.env` from `.env.example` when missing and stops so you can edit it; otherwise pulls images and starts services), `update` (pull + `up -d --force-recreate` + dangling image prune + `CHROMA_SERVER_VERSION` sync, then prints the version information reusing that single judgment), `start`, `stop` (`docker compose down`, data is kept), `restart` (does not re-read `.env` — use `update`/`start` after changing it), `status`, `logs [service]`, `version`, `backup`; `help` prints the usage. Everything host specific lives in `.env` and optional extra compose files, never in the script.
@@ -372,7 +374,8 @@ Exposed only when `CHROMA_ALLOW_DESTRUCTIVE_OPS=true`. Prints a `[DESTRUCTIVE]` 
 - Achieved Docker Scout 8/8 compliance
 - Zero active vulnerabilities in dependencies
 
-[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...HEAD
+[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.17...HEAD
+[3.0.17]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...v3.0.17
 [3.0.16]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.15...v3.0.16
 [3.0.15]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.14...v3.0.15
 [1.0.2]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.2
