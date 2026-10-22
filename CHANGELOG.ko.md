@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [3.0.16] - 2026-10-22
+
 ### Added
 
 - **`CHROMA_SERVER_VERSION`** — 운영자가 선언하는 Chroma 서버 버전. `chroma_get_server_version` 과 `/health/detail` 은 이 값을 신뢰할 수 있는 Chroma 버전으로 보고하고, 미설정 시 추측 대신 출처 설명과 함께 "unknown" 을 보고한다 — Chroma Rust 서버가 버전 엔드포인트에 "1.0.0" 을 하드코딩하기 때문이다 (chroma-core/chroma 1.5.9, rust/frontend/src/server.rs:647-654). `docker-compose.yml` 은 `${CHROMA_SERVER_VERSION:-1.5.9}` 를 넘기며, chromadb 이미지 핀과 함께 함께 올려야 한다.
@@ -351,7 +353,8 @@
 - Docker Scout 8/8 컴플라이언스 달성
 - 의존성 활성 취약점 제로
 
-[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...HEAD
+[3.0.16]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.15...v3.0.16
 [3.0.15]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.14...v3.0.15
 [1.0.2]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.2
 [1.0.1]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.1

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.16] - 2026-10-22
+
 ### Added
 
 - **`CHROMA_SERVER_VERSION`** — operator-declared Chroma server version. `chroma_get_server_version` and `/health/detail` report it as the trusted Chroma version; when unset they report "unknown" with provenance instead of guessing, because the Chroma Rust server hardcodes "1.0.0" on its version endpoints (chroma-core/chroma 1.5.9, rust/frontend/src/server.rs:647-654). `docker-compose.yml` passes `${CHROMA_SERVER_VERSION:-1.5.9}` — keep it in sync with the chromadb image pin.
@@ -351,7 +353,8 @@ Exposed only when `CHROMA_ALLOW_DESTRUCTIVE_OPS=true`. Prints a `[DESTRUCTIVE]` 
 - Achieved Docker Scout 8/8 compliance
 - Zero active vulnerabilities in dependencies
 
-[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...HEAD
+[3.0.16]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.15...v3.0.16
 [3.0.15]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.14...v3.0.15
 [1.0.2]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.2
 [1.0.1]: https://github.com/meloncafe/chromadb-remote-mcp/releases/tag/v1.0.1
