@@ -9,6 +9,17 @@
 
 ## [Unreleased]
 
+## [3.0.18] - 2026-10-25
+
+### Added
+
+- **`deploy.sh self-update [태그]`** — 저장소가 관리하는 파일(`deploy.sh`, `docker-compose.yml`, `docker-compose.traefik.example.yml`, `.env.example`)을 GitHub 릴리스 태그(기본: 최신)의 것으로 교체합니다. 스테이징 다운로드, 검증(비어있지 않음, `bash -n`, `services:`, 게시 시 `SHA256SUMS`), `backups/self-update_*` 백업, 원자적 교체와 실패·중단 시 원복; `.env`, 로컬 compose override, 데이터는 건드리지 않으며 `DRY_RUN=1` 을 지원하고 git 체크아웃은 거부합니다. `update` 와 의도적으로 분리했습니다(`update` 도중 compose 교체는 실행을 재현 불가능하게 함): `update` 는 안내를 출력하고 `self-update` 는 `update` 를 안내합니다.
+
+### Fixed
+
+- **Renovate `minimumReleaseAge: "2 days"`** — Yarn 4.18.1 은 기본 24시간 `npmMinimalAgeGate` 를 적용하므로, Renovate 가 게시 직후 버전으로 범위를 올리면 `yarn.lock` 갱신이 실패해 설치가 깨졌습니다. 이제 Renovate 는 릴리스 게시 후 2일이 지나야 제안합니다.
+- **`http-proxy-middleware` 범위를 `^4.2.1` → `^4.2.0` 으로 되돌림** — 범위를 올린 시점에 4.2.1 이 24시간 age gate 안에 있었습니다. `yarn.lock` 은 되돌린 범위 기준으로 재생성합니다.
+
 ## [3.0.17] - 2026-10-22
 
 ### Added
@@ -374,7 +385,8 @@
 - Docker Scout 8/8 컴플라이언스 달성
 - 의존성 활성 취약점 제로
 
-[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.17...HEAD
+[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.18...HEAD
+[3.0.18]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.17...v3.0.18
 [3.0.17]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...v3.0.17
 [3.0.16]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.15...v3.0.16
 [3.0.15]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.14...v3.0.15

@@ -545,6 +545,7 @@ ChromaDB REST API 엔드포인트의 Swagger UI 문서: `https://your-server.com
 | `./deploy.sh logs [서비스]` | 로그 팔로우(`--tail=100`), 예: `./deploy.sh logs mcp-server` |
 | `./deploy.sh version` | mcp 이미지·실행 컨테이너 버전과 핀한 chroma 이미지를 표시하고, 실행 이미지 digest 로 chroma 서버 버전을 판정해 `.env` 에 기록 |
 | `./deploy.sh backup` | chroma 데이터를 `backups/chromadb_data_<타임스탬프>.tar.gz` 로 백업(아래 참고) |
+| `./deploy.sh self-update [태그]` | `deploy.sh`, `docker-compose.yml`, `docker-compose.traefik.example.yml`, `.env.example` 를 GitHub 릴리스(기본: 최신)의 것으로 교체. `.env`, 로컬 compose override, 데이터는 건드리지 않음(아래 참고) |
 
 `./deploy.sh help` 는 사용법을 출력합니다.
 
@@ -577,6 +578,8 @@ DRY_RUN=1 ./deploy.sh update
 **`CHROMA_SERVER_VERSION` 처리** — Chroma 서버는 `1.0.0` 을 하드코딩해 보고하므로 `update` / `version` 은 chromadb 컨테이너 이미지의 RepoDigest 를 compose 에 핀한 digest, 이어서 핀 태그의 Docker Hub digest 와 대조해 판정하고 결과를 `.env` 에 기록합니다. 값이 바뀌면 mcp-server 만 `up -d` 로 재생성합니다. 판정 불가(Docker Hub `latest` 태그에만 일치하는 경우 포함) 시 `.env` 의 기존 값을 경고와 함께 보존하고, 기존 값이 없을 때만 `unknown` 을 기록합니다.
 
 **백업** — `./deploy.sh backup` 은 읽기 전용 마운트의 일회용 컨테이너로 데이터를 읽으므로 root 소유 bind 디렉터리와 named volume 모두 동작합니다. 데이터 위치는 자동 판정합니다: 기존 chromadb 컨테이너의 `/data` 마운트를 우선하고, 없으면 `.env` 의 `CHROMA_DATA_PATH` 를 씁니다(절대경로·`./`·`../` 는 bind 마운트, 기본값 `chroma-data` 같은 이름만이면 compose named volume `<프로젝트>_<이름>`). 아카이브는 `.tar.gz.partial` 로 쓴 뒤 성공 시 이름을 바꾸고 실패 시 삭제합니다. 일관된 스냅샷을 위해 chromadb 를 정지하며, 백업 전에 실행 중이었던 경우에만 다시 시작합니다. 백업 중 `SIGINT` 또는 `SIGTERM`(예: Ctrl+C)을 받으면 `.tar.gz.partial` 파일을 삭제하고, 백업 전에 실행 중이었던 경우 chromadb 를 다시 시작한 뒤 종료 코드 130(`SIGINT`) 또는 143(`SIGTERM`)으로 종료합니다.
+
+**자체 갱신** — `./deploy.sh self-update [태그]` 는 저장소가 관리하는 파일을 GitHub 릴리스 태그(기본: 최신 릴리스, `DEPLOY_TAG` 또는 `--tag` 도 가능)에서 스테이징 디렉터리로 내려받아 검증(비어있지 않음, 스크립트는 `bash -n`, compose 는 `services:`, 릴리스가 `SHA256SUMS` 를 게시하면 대조)하고, 현재 파일을 `backups/self-update_<타임스탬프>_<버전>/` 에 백업한 뒤 파일별로 원자적(임시 파일 + `mv`)으로 교체하며, 실패나 중단 시 백업에서 원복합니다. 현재·대상 버전을 표시합니다(설치된 태그는 `.deploy-release` 에 기록). `.env`, 릴리스에 없는 로컬 compose override, 데이터 디렉터리는 건드리지 않습니다. git 체크아웃에서는 실행을 거부하며(`git pull` 사용) `DRY_RUN=1` 을 지원합니다. `DEPLOY_REPO`(기본 `meloncafe/chromadb-remote-mcp`)와 `SELF_UPDATE_FILES` 로 원본 저장소와 파일 목록을 바꿀 수 있습니다. `update`(이미지)와 `self-update`(스크립트·compose)는 의도적으로 분리했습니다: `update` 도중 compose 파일을 바꾸면 pull/재생성의 기준이 달라지므로, `update` 는 안내만 출력하고 `self-update` 는 끝에서 `update` 실행을 안내합니다.
 
 **Traefik 리버스 프록시 뒤에서 운영** — [`docker-compose.traefik.example.yml`](docker-compose.traefik.example.yml) 은 자리표시자 변수를 쓰는 선택 예제 override 입니다. 복사해서 서버에만 두고, `.env` 의 compose 파일 목록으로 선택합니다:
 

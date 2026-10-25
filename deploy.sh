@@ -9,6 +9,7 @@
 #   restart  restart services / 재시작              status   service status / 상태
 #   logs     follow logs / 로그                     version  versions / 버전 확인
 #   backup   back up chroma data / 데이터 백업      help     usage (en/ko) / 도움말
+#   self-update [tag]  refresh deploy.sh + compose files from a release / 릴리스로 스크립트·compose 갱신
 #
 # Host-independent: everything host specific lives in .env (see .env.example) and
 # optional extra compose files, never in this script.
@@ -381,6 +382,7 @@ cmd_update() {
     sync_chroma_server_version
     apply_version_change
     log_success "$(L "Update complete" "갱신 완료")"
+    log_info "$(L "Hint: ./deploy.sh self-update refreshes deploy.sh/compose files from the latest release (images only were updated here)" "안내: ./deploy.sh self-update 로 deploy.sh/compose 파일을 최신 릴리스로 갱신할 수 있습니다(여기서는 이미지만 갱신됨)")"
     # Show the version report reusing the judgment above (no second Hub pass).
     # 위 판정을 재사용해 버전 정보를 출력한다(Hub 판정 반복 없음).
     print_version_info
@@ -592,6 +594,218 @@ cmd_backup() {
     ls -lh "${backup_file}"
 }
 
+# Self-update / 자체 갱신 -------------------------------------------------------------------
+# Replaces ONLY the repository-managed files (SELF_UPDATE_FILES) with the ones from a GitHub
+# release tag. Never touched: .env, local compose overrides that are not in the release
+# (e.g. a traefik file you copied from the example), and the data directory. Safety chain:
+# download everything to a staging dir -> validate -> back up the current files -> replace
+# each file atomically (temp file + mv) -> roll back from the backup on any failure/signal.
+# Design: `update` (images) and `self-update` (scripts/compose) stay separate on purpose.
+# Swapping docker-compose.yml inside `update` would change what the pull/recreate runs
+# against mid-command and make the result unreproducible; so `update` only prints a hint and
+# `self-update` ends with a hint to run `update`. A git checkout is refused (use git pull).
+# 저장소가 관리하는 파일(SELF_UPDATE_FILES)만 GitHub 릴리스 태그의 것으로 교체한다. .env,
+# 릴리스에 없는 로컬 compose override(예: 예제에서 복사한 traefik 파일), 데이터 디렉터리는
+# 건드리지 않는다. 안전 순서: 스테이징 다운로드 -> 검증 -> 현재 파일 백업 -> 파일별 원자적
+# 교체(임시 파일 + mv) -> 실패/시그널 시 백업에서 원복.
+# 설계: `update`(이미지)와 `self-update`(스크립트·compose)는 의도적으로 분리한다. `update`
+# 안에서 docker-compose.yml 을 바꾸면 pull/재생성의 기준이 명령 도중 바뀌어 재현이 안 되므로,
+# `update` 는 안내만 출력하고 `self-update` 는 끝에서 `update` 실행을 안내한다.
+# git 체크아웃에서는 거부한다(git pull 사용).
+SELF_UPDATE_FILES_DEFAULT="deploy.sh docker-compose.yml docker-compose.traefik.example.yml .env.example"
+SELF_UPDATE_REQUIRED="deploy.sh docker-compose.yml"
+SU_STAGE=""
+SU_BACKUP=""
+SU_DONE=()
+
+su_raw_base() { printf '%s/%s' "${DEPLOY_RAW_BASE:-https://raw.githubusercontent.com}" "${DEPLOY_REPO:-meloncafe/chromadb-remote-mcp}"; }
+
+su_current_version() {
+    local v=""
+    if [ -f "${SCRIPT_DIR}/.deploy-release" ]; then v="$(head -1 "${SCRIPT_DIR}/.deploy-release" | tr -cd 'A-Za-z0-9._-')"; fi
+    printf '%s' "${v:-unknown}"
+}
+
+# Latest release tag via the GitHub API (read-only); empty on failure.
+# GitHub API 로 최신 릴리스 태그를 조회한다(읽기 전용). 실패 시 빈 값.
+su_latest_tag() {
+    curl -fsSL --max-time 30 "${DEPLOY_API_BASE:-https://api.github.com}/repos/${DEPLOY_REPO:-meloncafe/chromadb-remote-mcp}/releases/latest" 2>/dev/null \
+        | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+        | sed -E 's/^.*:[[:space:]]*"([^"]*)"$/\1/' || true
+}
+
+su_cleanup_stage() {
+    [ -n "${SU_STAGE}" ] && [ -d "${SU_STAGE}" ] || return 0
+    find "${SU_STAGE}" -maxdepth 1 -type f -exec rm -f {} + 2>/dev/null || true
+    rmdir "${SU_STAGE}" 2>/dev/null || true
+}
+
+# Restores every replaced file from the backup (removes files that did not exist before).
+# 교체한 모든 파일을 백업에서 되돌린다(이전에 없던 파일은 삭제).
+su_rollback() {
+    local f="" dest=""
+    for f in ${SU_DONE[@]+"${SU_DONE[@]}"}; do
+        dest="${SCRIPT_DIR}/${f}"
+        if [ -f "${SU_BACKUP}/${f}" ]; then
+            if cp -p "${SU_BACKUP}/${f}" "${dest}.rb.$$"; then mv -f "${dest}.rb.$$" "${dest}"; fi
+        else
+            rm -f "${dest}"
+        fi
+    done
+    SU_DONE=()
+}
+
+su_on_signal() {
+    log_error "$(L "Interrupted: rolling back" "중단됨: 원복합니다")"
+    su_rollback
+    su_cleanup_stage
+    trap - INT TERM
+    exit "$1"
+}
+su_on_sigint()  { su_on_signal 130; }
+su_on_sigterm() { su_on_signal 143; }
+
+# Structural integrity of one downloaded file (non-empty; shell syntax; yaml top level).
+# 내려받은 파일 하나의 구조 검증(비어있지 않음, 셸 문법, yaml 최상위).
+su_validate_file() {
+    local name="$1" path="$2"
+    [ -s "${path}" ] || { log_error "$(L "Empty download: ${name}" "내용이 비어 있습니다: ${name}")"; return 1; }
+    case "${name}" in
+        *.sh)
+            head -1 "${path}" | grep -q '^#!' || { log_error "$(L "Not a script (no shebang): ${name}" "스크립트가 아닙니다(shebang 없음): ${name}")"; return 1; }
+            bash -n "${path}" || { log_error "$(L "Shell syntax error: ${name}" "셸 문법 오류: ${name}")"; return 1; }
+            ;;
+        *.yml|*.yaml)
+            grep -qE '^services:' "${path}" || { log_error "$(L "Not a compose file (no services:): ${name}" "compose 파일이 아닙니다(services: 없음): ${name}")"; return 1; }
+            ;;
+    esac
+    return 0
+}
+
+su_sha256() {
+    if command -v sha256sum > /dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
+# Verifies against a SHA256SUMS file when the release publishes one at the tag root.
+# 릴리스가 태그 루트에 SHA256SUMS 를 게시하면 그것과 대조한다.
+su_verify_sums() {
+    local name="" want="" got="" checked=0
+    if ! curl -fsSL --max-time 30 -o "${SU_STAGE}/.SHA256SUMS" "$(su_raw_base)/${SU_TAG}/SHA256SUMS" 2>/dev/null; then
+        log_info "$(L "No SHA256SUMS published for ${SU_TAG}: relying on structural checks + TLS" "${SU_TAG} 에 SHA256SUMS 가 없어 구조 검증 + TLS 에 의존합니다")"
+        return 0
+    fi
+    for name in "$@"; do
+        want="$(awk -v n="${name}" '$2==n || $2=="*"n {print $1; exit}' "${SU_STAGE}/.SHA256SUMS")"
+        [ -n "${want}" ] || continue
+        got="$(su_sha256 "${SU_STAGE}/${name}")"
+        if [ "${want}" != "${got}" ]; then
+            log_error "$(L "sha256 mismatch: ${name}" "sha256 불일치: ${name}")"
+            return 1
+        fi
+        checked=$((checked + 1))
+    done
+    log_success "$(L "sha256 verified: ${checked} file(s)" "sha256 검증 완료: ${checked}개 파일")"
+}
+
+cmd_self_update() {
+    local requested="${DEPLOY_TAG:-}" current="" name="" ts="" dest="" mode=""
+    local -a files=() fetched=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --tag)   [ $# -ge 2 ] || { log_error "$(L "--tag needs a value" "--tag 에 값이 필요합니다")"; exit 1; }
+                     requested="$2"; shift 2 ;;
+            --tag=*) requested="${1#--tag=}"; shift ;;
+            -*)      log_error "$(L "Unknown option: $1" "알 수 없는 옵션: $1")"; exit 1 ;;
+            *)       requested="$1"; shift ;;
+        esac
+    done
+    if [ -e "${SCRIPT_DIR}/.git" ]; then
+        log_error "$(L "This is a git checkout: update it with 'git pull' (or checkout a tag), not self-update" "git 체크아웃입니다: self-update 대신 'git pull'(또는 태그 checkout)로 갱신하세요")"
+        exit 1
+    fi
+    if ! command -v curl > /dev/null 2>&1; then
+        log_error "$(L "curl is required" "curl 이 필요합니다")"; exit 1
+    fi
+    SU_TAG="${requested}"
+    if [ -z "${SU_TAG}" ]; then
+        SU_TAG="$(su_latest_tag)"
+        [ -n "${SU_TAG}" ] || { log_error "$(L "Cannot resolve the latest release tag (network/API?). Pass one: ./deploy.sh self-update <tag>" "최신 릴리스 태그를 조회할 수 없습니다(네트워크/API?). 직접 지정: ./deploy.sh self-update <tag>")"; exit 1; }
+    fi
+    case "${SU_TAG}" in
+        [A-Za-z0-9]*) ;;
+        *) log_error "$(L "Invalid tag: ${SU_TAG}" "잘못된 태그: ${SU_TAG}")"; exit 1 ;;
+    esac
+    if [ -n "$(printf '%s' "${SU_TAG}" | tr -d 'A-Za-z0-9._-')" ]; then
+        log_error "$(L "Invalid tag: ${SU_TAG}" "잘못된 태그: ${SU_TAG}")"; exit 1
+    fi
+    current="$(su_current_version)"
+    log_info "$(L "Self-update: current ${current} -> target ${SU_TAG}" "자체 갱신: 현재 ${current} -> 대상 ${SU_TAG}")"
+    if [ "${current}" = "${SU_TAG}" ] && [ "${SELF_UPDATE_FORCE:-0}" != "1" ]; then
+        log_success "$(L "Already at ${SU_TAG} (SELF_UPDATE_FORCE=1 to reinstall)" "이미 ${SU_TAG} 입니다 (재설치는 SELF_UPDATE_FORCE=1)")"
+        return 0
+    fi
+    read -r -a files <<< "${SELF_UPDATE_FILES:-${SELF_UPDATE_FILES_DEFAULT}}"
+    for name in ${files[@]+"${files[@]}"}; do
+        # Flat names only; .env (secrets) is never replaceable. / 평면 이름만, .env 는 교체 불가.
+        if [ "${name}" = ".env" ] || [ -n "$(printf '%s' "${name}" | tr -d 'A-Za-z0-9._-')" ]; then
+            log_error "$(L "Refusing unsafe file name: ${name}" "안전하지 않은 파일 이름을 거부합니다: ${name}")"; exit 1
+        fi
+    done
+    ts="$(date +%Y%m%d_%H%M%S)"
+    SU_BACKUP="${SCRIPT_DIR}/${BACKUP_DIR}/self-update_${ts}_${current}"
+    if dry_run; then
+        log_info "[DRY-RUN] $(L "download from $(su_raw_base)/${SU_TAG}/: ${files[*]}" "다운로드 원본 $(su_raw_base)/${SU_TAG}/: ${files[*]}")"
+        log_info "[DRY-RUN] $(L "validate (non-empty, bash -n, services:, SHA256SUMS if published)" "검증 (비어있지 않음, bash -n, services:, SHA256SUMS 있으면 대조)")"
+        log_info "[DRY-RUN] cp -p <current files> ${SU_BACKUP}/"
+        log_info "[DRY-RUN] $(L "replace atomically (temp file + mv); roll back on failure; untouched: .env, local overrides, data" "원자적 교체(임시 파일 + mv), 실패 시 원복. 미접촉: .env, 로컬 override, 데이터")"
+        return 0
+    fi
+
+    SU_STAGE="${SCRIPT_DIR}/.self-update.$$"
+    mkdir -p "${SU_STAGE}"
+    trap su_on_sigint INT
+    trap su_on_sigterm TERM
+    log_info "$(L "Downloading ${SU_TAG}..." "${SU_TAG} 를 내려받는 중...")"
+    for name in "${files[@]}"; do
+        if curl -fsSL --max-time 60 -o "${SU_STAGE}/${name}" "$(su_raw_base)/${SU_TAG}/${name}" 2>/dev/null; then
+            su_validate_file "${name}" "${SU_STAGE}/${name}" || { su_cleanup_stage; exit 1; }
+            fetched+=("${name}")
+        elif case " ${SELF_UPDATE_REQUIRED} " in *" ${name} "*) true ;; *) false ;; esac; then
+            log_error "$(L "Required file missing from ${SU_TAG}: ${name}" "${SU_TAG} 에 필수 파일이 없습니다: ${name}")"
+            su_cleanup_stage; exit 1
+        else
+            log_warning "$(L "Not in ${SU_TAG}, skipped: ${name}" "${SU_TAG} 에 없어 건너뜁니다: ${name}")"
+        fi
+    done
+    su_verify_sums "${fetched[@]}" || { su_cleanup_stage; exit 1; }
+
+    mkdir -p "${SU_BACKUP}"
+    for name in "${fetched[@]}"; do
+        if [ -f "${SCRIPT_DIR}/${name}" ]; then cp -p "${SCRIPT_DIR}/${name}" "${SU_BACKUP}/${name}"; fi
+    done
+    log_info "$(L "Backup of current files: ${SU_BACKUP}" "현재 파일 백업: ${SU_BACKUP}")"
+
+    for name in "${fetched[@]}"; do
+        dest="${SCRIPT_DIR}/${name}"
+        mode="644"; case "${name}" in *.sh) mode="755" ;; esac
+        if cp "${SU_STAGE}/${name}" "${dest}.new.$$" && chmod "${mode}" "${dest}.new.$$" && mv -f "${dest}.new.$$" "${dest}"; then
+            SU_DONE+=("${name}")
+        else
+            rm -f "${dest}.new.$$"
+            log_error "$(L "Replace failed: ${name}; rolling back" "교체 실패: ${name}; 원복합니다")"
+            SU_DONE+=("${name}")
+            su_rollback; su_cleanup_stage; trap - INT TERM
+            exit 1
+        fi
+    done
+    printf '%s\n' "${SU_TAG}" > "${SCRIPT_DIR}/.deploy-release.new.$$" && mv -f "${SCRIPT_DIR}/.deploy-release.new.$$" "${SCRIPT_DIR}/.deploy-release"
+    su_cleanup_stage
+    trap - INT TERM
+    log_success "$(L "Self-update complete: ${current} -> ${SU_TAG} (${fetched[*]})" "자체 갱신 완료: ${current} -> ${SU_TAG} (${fetched[*]})")"
+    log_info "$(L "Next: ./deploy.sh update to apply the new compose file to the running stack" "다음: ./deploy.sh update 로 새 compose 파일을 실행 중인 스택에 반영하세요")"
+}
+
 # Help / 도움말 ---------------------------------------------------------------------------
 # Printed in the selected language only (DEPLOY_LANG > .env > locale) / 선택된 언어로만 출력.
 cmd_help() {
@@ -609,6 +823,7 @@ cmd_help() {
     echo "  logs      $(L "follow logs; optional service names: logs mcp-server" "로그 보기; 서비스명 지정 가능: logs mcp-server")"
     echo "  version   $(L "show mcp/chroma versions, record CHROMA_SERVER_VERSION" "mcp/chroma 버전 표시, CHROMA_SERVER_VERSION 기록")"
     echo "  backup    $(L "back up chroma data (named volume or bind path) to ${BACKUP_DIR}/" "chroma 데이터(named volume 또는 bind 경로)를 ${BACKUP_DIR}/ 에 백업")"
+    echo "  self-update [tag]  $(L "replace deploy.sh/compose/.env.example from a release tag (default: latest); .env, local overrides, data untouched" "deploy.sh/compose/.env.example 를 릴리스 태그(기본: 최신)로 교체; .env·로컬 override·데이터는 미접촉")"
     echo "  help      $(L "show this help" "이 도움말 표시")"
     echo ""
     echo "$(L "Settings (process env overrides .env)" "설정 (프로세스 환경이 .env 보다 우선)"):"
@@ -619,6 +834,9 @@ cmd_help() {
     echo "  PORT, MCP_IMAGE_TAG        $(L "published port, mcp image tag" "공개 포트, mcp 이미지 태그")"
     echo "  DRY_RUN=1                  $(L "print the plan only; no docker call, no file change" "계획만 출력: docker 호출·파일 변경 없음")"
     echo "  DEPLOY_DIR, CHROMA_IMAGE   $(L "target directory (tests), image for the backup tar" "대상 디렉터리(테스트), 백업 tar 이미지")"
+    echo "  DEPLOY_REPO, DEPLOY_TAG    $(L "self-update: GitHub owner/repo (default meloncafe/chromadb-remote-mcp), release tag" "self-update: GitHub owner/repo(기본 meloncafe/chromadb-remote-mcp), 릴리스 태그")"
+    echo "  SELF_UPDATE_FILES          $(L "self-update: space-separated file names to replace" "self-update: 교체할 파일 이름 목록(공백 구분)")"
+    echo "  SELF_UPDATE_FORCE=1        $(L "self-update: reinstall even when already at the target tag" "self-update: 이미 대상 태그여도 재설치")"
 }
 
 main() {
@@ -626,7 +844,7 @@ main() {
     detect_lang
     case "${cmd}" in
         help|--help|-h) cmd_help; return 0 ;;
-        install|update|start|stop|restart|status|logs|version|backup) ;;
+        install|update|start|stop|restart|status|logs|version|backup|self-update) ;;
         *)
             log_error "$(L "Unknown command: ${cmd}" "알 수 없는 명령: ${cmd}")"
             echo "" >&2
@@ -634,8 +852,11 @@ main() {
             return 1
             ;;
     esac
-    resolve_compose_files
     shift || true
+    # self-update is the repair path: it must work even when compose files are missing/broken.
+    # self-update 는 복구 경로라 compose 파일이 없거나 깨져도 동작해야 한다.
+    if [ "${cmd}" = "self-update" ]; then cmd_self_update "$@"; return 0; fi
+    resolve_compose_files
     case "${cmd}" in
         logs) cmd_logs "$@" ;;
         *)    "cmd_${cmd}" ;;

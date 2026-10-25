@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.18] - 2026-10-25
+
+### Added
+
+- **`deploy.sh self-update [tag]`** — replaces the repository-managed files (`deploy.sh`, `docker-compose.yml`, `docker-compose.traefik.example.yml`, `.env.example`) with the ones from a GitHub release tag (default: latest). Staged download, validation (non-empty, `bash -n`, `services:`, `SHA256SUMS` when published), backup under `backups/self-update_*`, atomic replace and rollback on failure/interrupt; `.env`, local compose overrides and data are never touched; `DRY_RUN=1` supported; refuses git checkouts. Kept separate from `update` on purpose (swapping compose mid-`update` makes the run non-reproducible): `update` prints a hint and `self-update` points to `update`.
+
+### Fixed
+
+- **Renovate `minimumReleaseAge: "2 days"`** — Yarn 4.18.1 enforces a default 24h `npmMinimalAgeGate`, so Renovate bumping a range to a just-published version left `yarn.lock` unable to update and broke installs. Renovate now waits 2 days before proposing a release.
+- **`http-proxy-middleware` range reverted `^4.2.1` → `^4.2.0`** — 4.2.1 was inside the 24h age gate when the range was bumped; `yarn.lock` is regenerated against the reverted range.
+
 ## [3.0.17] - 2026-10-22
 
 ### Added
@@ -374,7 +385,8 @@ Exposed only when `CHROMA_ALLOW_DESTRUCTIVE_OPS=true`. Prints a `[DESTRUCTIVE]` 
 - Achieved Docker Scout 8/8 compliance
 - Zero active vulnerabilities in dependencies
 
-[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.17...HEAD
+[Unreleased]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.18...HEAD
+[3.0.18]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.17...v3.0.18
 [3.0.17]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.16...v3.0.17
 [3.0.16]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.15...v3.0.16
 [3.0.15]: https://github.com/meloncafe/chromadb-remote-mcp/compare/v3.0.14...v3.0.15
