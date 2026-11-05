@@ -226,19 +226,22 @@ export function decodeCursor(cursor: string): PaginationCursor {
  * @param offset - Current offset in result set.
  * @param limit - Page size.
  * @param total - Total number of results available.
+ * @param returned - Number of results returned on this page.
  * @returns Metadata with next/previous cursors and hasMore flag.
  */
 export function createPaginationMetadata(
   offset: number,
   limit: number,
   total: number,
+  returned: number,
 ): {
   nextCursor?: string;
   prevCursor?: string;
   hasMore: boolean;
   total: number;
 } {
-  const hasMore = offset + limit < total;
+  // 짧은 페이지는 where 필터 결과가 소진된 것이므로 컬렉션 전체 total 과 무관하다.
+  const hasMore = returned >= limit && offset + returned < total;
   const nextCursor = hasMore ? encodeCursor(offset + limit, limit) : undefined;
   const prevCursor = offset > 0 ? encodeCursor(Math.max(0, offset - limit), limit) : undefined;
 
@@ -1562,7 +1565,7 @@ export async function handleChromaTool(
         });
 
         // Add pagination metadata
-        const pagination = createPaginationMetadata(offset, limit, totalCount);
+        const pagination = createPaginationMetadata(offset, limit, totalCount, results.ids.length);
 
         return {
           content: [

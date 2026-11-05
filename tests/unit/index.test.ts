@@ -2357,7 +2357,7 @@ describe("index.ts", () => {
 
     describe("createPaginationMetadata", () => {
       it("should create metadata with next cursor when has more", () => {
-        const metadata = createPaginationMetadata(0, 10, 100);
+        const metadata = createPaginationMetadata(0, 10, 100, 10);
 
         expect(metadata.hasMore).toBe(true);
         expect(metadata.nextCursor).toBeDefined();
@@ -2365,29 +2365,44 @@ describe("index.ts", () => {
       });
 
       it("should not include next cursor when no more results", () => {
-        const metadata = createPaginationMetadata(90, 10, 100);
+        const metadata = createPaginationMetadata(90, 10, 100, 10);
 
         expect(metadata.hasMore).toBe(false);
         expect(metadata.nextCursor).toBeUndefined();
       });
 
       it("should include prev cursor when offset > 0", () => {
-        const metadata = createPaginationMetadata(20, 10, 100);
+        const metadata = createPaginationMetadata(20, 10, 100, 10);
 
         expect(metadata.prevCursor).toBeDefined();
       });
 
       it("should not include prev cursor when offset = 0", () => {
-        const metadata = createPaginationMetadata(0, 10, 100);
+        const metadata = createPaginationMetadata(0, 10, 100, 10);
 
         expect(metadata.prevCursor).toBeUndefined();
       });
 
       it("should handle edge case: exactly at end", () => {
-        const metadata = createPaginationMetadata(90, 10, 100);
+        const metadata = createPaginationMetadata(90, 10, 100, 10);
 
         expect(metadata.hasMore).toBe(false);
         expect(metadata.nextCursor).toBeUndefined();
+      });
+
+      it("pagination hasMore uses returned length", () => {
+        const filtered = createPaginationMetadata(0, 10, 100, 3);
+
+        expect(filtered.hasMore).toBe(false);
+        expect(filtered.nextCursor).toBeUndefined();
+
+        const full = createPaginationMetadata(0, 10, 100, 10);
+
+        expect(full.hasMore).toBe(true);
+
+        const lastFull = createPaginationMetadata(90, 10, 100, 10);
+
+        expect(lastFull.hasMore).toBe(false);
       });
     });
   });
