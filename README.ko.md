@@ -232,6 +232,7 @@ cp .env.example .env
 | `MCP_AUTH_TOKEN`    | MCP 및 REST API 인증 토큰                                       | -                  | **예** (공개 접근 시) |
 | `CHROMA_AUTH_TOKEN` | ChromaDB 인증 토큰 (ChromaDB에서 인증이 필요한 경우)            | -                  | 아니오                |
 | `RATE_LIMIT_MAX`    | IP당 15분당 최대 요청 수                                        | `100`              | 아니오                |
+| `MCP_JSON_BODY_LIMIT` | JSON 요청 본문 최대 크기 (바이트 수 또는 `b`/`kb`/`mb`/`gb`, 예: `512kb`). 잘못된 값, 빈 값, 0 이하는 경고 후 `1mb` 로 대체됩니다. **참고: JSON 파서는 인증 앞에서 동작하므로 값을 올리면 미인증 본문도 그 크기까지 파싱됩니다.** | `1mb` | 아니오 |
 | `ALLOWED_ORIGINS`   | 허용된 origin 목록 (쉼표로 구분, DNS rebinding 방어)            | -                  | 아니오                |
 | `CHROMA_SERVER_VERSION` | 운영자가 선언하는 Chroma 서버 버전 — `chroma_get_server_version` 과 `/health/detail` 의 신뢰할 수 있는 버전 출처. **주의: `chromadb/chroma:latest` 이미지를 쓰면 이미지가 바뀌어도 이 값은 따라가지 않아 어긋날 수 있다 — 버전 태그로 핀하고 같은 값으로 맞출 것** | 미설정 시 `unknown` (docker-compose.yml 기본 `1.5.9`) | 아니오 |
 | `MCP_SERVER_VERSION` | MCP 래퍼 버전 — 릴리스 이미지에 자동 설정 (릴리스 태그 → `VERSION` build-arg), 직접 설정할 필요 없음 | 미설정 시 `dev` | 아니오 |

@@ -21,6 +21,7 @@ import {createChromaTools, handleChromaTool, ADMIN_TOOLS_ENABLED, DESTRUCTIVE_OP
 import { getAdminClient } from "./admin-client.js";
 import type {ChromaConfig} from "./types.js";
 import {getChromaVersion, getMcpVersion} from "./version.js";
+import {resolveJsonBodyLimit} from "./json-body-limit.js";
 import {
   resolveEmbeddingProviderConfig,
   embeddingProviderConfig,
@@ -1230,7 +1231,10 @@ export const app = express();
 // See: https://expressjs.com/en/guide/behind-proxies.html
 app.set("trust proxy", 2);
 
-app.use(express.json());
+// The global JSON parser runs BEFORE authentication, so raising MCP_JSON_BODY_LIMIT lets unauthenticated bodies be parsed up to that size.
+// The value is validated, never passed raw.
+// 전역 JSON 파서는 인증 전에 실행되므로 MCP_JSON_BODY_LIMIT을 높이면 인증되지 않은 본문도 그 크기까지 파싱됩니다; 값은 검증되며 원시 값으로 전달되지 않습니다.
+app.use(express.json({limit: resolveJsonBodyLimit()}));
 
 // Rate limiter skip function - exported for testing
 export function shouldSkipRateLimit(req: express.Request): boolean {

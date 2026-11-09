@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.20] - 2026-11-09
+
+### Added
+
+- **`MCP_JSON_BODY_LIMIT`** — the global `express.json()` body limit is now configurable (default `1mb`, previously Express's implicit 100kb, which rejected large memory upserts with 413). The value is validated strictly and resolved to bytes before use (Express's own `bytes.parse` is lenient); invalid, empty, non-positive or non-finite values fall back to `1mb` with a single warning on stderr. The parser runs before authentication, so raising the limit lets unauthenticated bodies be parsed up to that size. The oauth-proxy 16kb parsers are unchanged.
+
 ## [3.0.18] - 2026-10-25
 
 ### Added

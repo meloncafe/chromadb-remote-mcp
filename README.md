@@ -232,6 +232,7 @@ cp .env.example .env
 | `MCP_AUTH_TOKEN`    | Authentication token for MCP and REST API                            | -                  | **Yes** (for public access) |
 | `CHROMA_AUTH_TOKEN` | ChromaDB auth token (if ChromaDB requires auth)                      | -                  | No                          |
 | `RATE_LIMIT_MAX`    | Max requests per IP per 15 minutes                                   | `100`              | No                          |
+| `MCP_JSON_BODY_LIMIT` | Max JSON request body size (byte count or `b`/`kb`/`mb`/`gb`, e.g. `512kb`). Invalid, empty, or non-positive values fall back to `1mb` with a warning. **Note: the JSON parser runs before authentication, so raising this lets unauthenticated bodies be parsed up to that size.** | `1mb` | No |
 | `ALLOWED_ORIGINS`   | Comma-separated list of allowed origins (DNS rebinding protection)   | -                  | No                          |
 | `CHROMA_SERVER_VERSION` | Chroma server version declared by the operator — used by `chroma_get_server_version` and `/health/detail` as the trusted version source. **Warning: with the `chromadb/chroma:latest` image this value does not follow image updates and can drift — pin a version tag and set this to the same value.** | `unknown` when unset; docker-compose.yml default `1.5.9` | No |
 | `MCP_SERVER_VERSION` | MCP wrapper version — set automatically in release images (release tag → `VERSION` build-arg); no need to set it manually | `dev` when unset | No |
